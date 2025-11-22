@@ -1,14 +1,17 @@
 import './App.css'
-import Login from './pages/auth/Login.jsx'
-import SignUp from './pages/auth/SignUp.jsx'
-import Profile from './pages/Profile.jsx'
+import { ThemeProvider } from './context/ThemeContext.jsx'
+import { ScheduleProvider } from './context/ScheduleContext.jsx'
+import Settings from './pages/Settings.jsx'
 
 function App() {
-
   return (
-    <div className="app-container">
-      <Profile />
-    </div>
+    <ThemeProvider>
+      <ScheduleProvider>
+        <div className="app-container">
+          <Settings />
+        </div>
+      </ScheduleProvider>
+    </ThemeProvider>
   )
 }
 

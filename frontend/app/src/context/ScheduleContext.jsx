@@ -52,7 +52,9 @@ export function ScheduleProvider({ children }) {
     <ScheduleContext.Provider
       value={{
         tasks,
+        setTasks,
         events,
+        setEvents,
         addTask,
         updateTask,
         deleteTask,
