@@ -51,7 +51,6 @@ function ConfettiWrapper() {
 function AppContent() {
   return (
     <>
-      <ConfettiWrapper />
       <Router>
         <div className="app-container">
           <Routes>
