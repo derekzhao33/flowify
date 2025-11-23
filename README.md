@@ -3,6 +3,7 @@
 ## Setup Instructions
 
 ### Backend Setup
+0. Download postgresql
 1. Navigate to the backend directory:
    ```bash
    cd backend/app
