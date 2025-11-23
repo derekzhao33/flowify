@@ -843,6 +843,7 @@ export default function Calender() {
               cursor: input.trim() ? 'pointer' : 'not-allowed'
             }}
           >
+            </Button>
             <Input
               className="flex-1 text-lg border-0 focus:ring-0 focus:outline-none bg-transparent"
               placeholder="Tell me what you need to do... (e.g. 'meeting from 2-4pm', 'study for exam at 6pm for 2 hours')"
@@ -877,6 +878,5 @@ export default function Calender() {
         <AddTaskModal />
         <TaskDetailsModal />
       </div>
-    </div>
   );
 }
