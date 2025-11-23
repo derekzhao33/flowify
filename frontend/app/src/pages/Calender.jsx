@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { useSchedule } from "../context/ScheduleContext";
 import { useModal } from "../context/ModalContext";
+import { useThemeSettings } from "../context/ThemeContext";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "../components/ui/popover";
@@ -9,11 +10,12 @@ import { format, addDays, subDays, startOfWeek, endOfWeek, startOfMonth, endOfMo
 import { CalendarIcon, MicIcon } from "lucide-react";
 import AddTaskModal from "../components/AddTaskModal";
 import TaskDetailsModal from "../components/TaskDetailsModal";
+import Sidebar from "../components/Sidebar";
 
-const PRIMARY_BG = "#E0E7FF";
-const PRIMARY_DARK = "#181D27";
-const PRIMARY_LIGHT = "#F6F8FF";
-const BORDER_COLOR = "#B0B6C6";
+const PRIMARY_BG = "#F7F8FC";
+const PRIMARY_DARK = "#355C7D";
+const PRIMARY_LIGHT = "#FFFFFF";
+const BORDER_COLOR = "#E8E0EB";
 const TIME_START = 0; // midnight
 const TIME_END = 24; // 24 hours
 const TIME_INTERVAL = 1; // 1 hour
@@ -178,6 +180,7 @@ function parseTaskInput(input) {
 export default function Calender() {
   const { events, tasks, addTask } = useSchedule();
   const { openAddTaskModal, openTaskDetailsModal } = useModal();
+  const { theme } = useThemeSettings();
   const [view, setView] = useState("Day");
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [input, setInput] = useState("");
@@ -357,9 +360,11 @@ export default function Calender() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col" style={{ background: PRIMARY_BG, height: '100vh', maxHeight: '100vh', overflow: 'hidden' }}>
-      {/* Header and View Switcher */}
-      <div className="flex flex-col md:flex-row justify-between items-center p-6 pb-2">
+    <div className={`flex min-h-screen ${theme === 'dark' ? 'dark' : ''}`} style={{ background: PRIMARY_BG }}>
+      <Sidebar />
+      <div className="flex-1 flex flex-col" style={{ height: '100vh', maxHeight: '100vh', overflow: 'hidden' }}>
+        {/* Header and View Switcher */}
+        <div className="flex flex-col md:flex-row justify-between items-center p-6 pb-2">
         <div className="flex items-center gap-4">
           <Button variant="ghost" onClick={handlePrev} style={{ color: PRIMARY_DARK }}>
             &lt;
@@ -529,9 +534,10 @@ export default function Calender() {
         </div>
       </div>
 
-      {/* Modals */}
-      <AddTaskModal />
-      <TaskDetailsModal />
+        {/* Modals */}
+        <AddTaskModal />
+        <TaskDetailsModal />
+      </div>
     </div>
   );
 }

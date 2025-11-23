@@ -1,13 +1,17 @@
 import React, { useState } from 'react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Separator } from '@/components/ui/separator';
+import { Button } from '../components/ui/button';
+import { Input } from '../components/ui/input';
+import { Label } from '../components/ui/label';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
+import { Avatar, AvatarFallback, AvatarImage } from '../components/ui/avatar';
+import { Separator } from '../components/ui/separator';
+import { useThemeSettings } from '../context/ThemeContext';
+import Sidebar from '../components/Sidebar';
 import { Camera, Mail, User, Lock, Link2 } from 'lucide-react';
 
 const Profile = () => {
+  const { theme } = useThemeSettings();
+
   // Profile state
   const [firstName, setFirstName] = useState('John');
   const [lastName, setLastName] = useState('Doe');
@@ -48,33 +52,16 @@ const Profile = () => {
     // Connect Outlook account
   };
 
-  const NavLink = ({ children, active = false }) => (
-    <div className={`text-gray-300 hover:text-white transition cursor-pointer py-2 px-4 rounded-lg ${active ? 'bg-gray-700' : ''}`}>
-      {children}
-    </div>
-  );
-
   return (
-    <div className="flex min-h-screen" style={{ backgroundColor: '#E0E7FF' }}>
-      {/* Sidebar */}
-      <aside className="w-64 p-6 shadow-xl rounded-r-3xl hidden md:block" style={{ backgroundColor: '#181D27' }}>
-        <h2 className="text-xl font-bold mb-6 text-white">Schedu.ai</h2>
-        <ul className="space-y-2">
-          <li><NavLink>Dashboard</NavLink></li>
-          <li><NavLink>Calendar</NavLink></li>
-          <li><NavLink>Tasks</NavLink></li>
-          <li><NavLink>Assistant</NavLink></li>
-          <li><NavLink>Stats</NavLink></li>
-          <li><NavLink active>Profile</NavLink></li>
-        </ul>
-      </aside>
+    <div className={`flex min-h-screen ${theme === 'dark' ? 'dark' : ''}`} style={{ backgroundColor: '#F7F8FC' }}>
+      <Sidebar />
 
       {/* Main content */}
       <main className="flex-1 p-8 space-y-8 w-full">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold" style={{ color: '#181D27' }}>Profile Settings</h1>
-          <p className="text-gray-600 mt-2">Manage your account information and preferences</p>
+          <h1 className="text-3xl font-bold bg-gradient-to-r from-[#355C7D] to-[#725A7A] bg-clip-text text-transparent">Profile Settings</h1>
+          <p className="text-muted-foreground mt-2">Manage your account information and preferences</p>
         </div>
 
         {/* Profile Information Card */}
@@ -88,7 +75,7 @@ const Profile = () => {
             <div className="flex items-center gap-6">
               <Avatar className="h-24 w-24">
                 <AvatarImage src={profileImage} />
-                <AvatarFallback className="text-2xl" style={{ backgroundColor: '#181D27', color: 'white' }}>
+                <AvatarFallback className="text-2xl bg-gradient-to-r from-[#FF9CA5] to-[#C56C86] text-white">
                   {firstName[0]}{lastName[0]}
                 </AvatarFallback>
               </Avatar>
@@ -169,7 +156,7 @@ const Profile = () => {
             <div className="flex justify-end pt-4">
               <Button
                 onClick={handleSaveProfile}
-                className="bg-[#181D27] hover:bg-[#2a3142] text-white font-medium cursor-pointer"
+                className="bg-gradient-to-r from-[#FF7582] to-[#C56C86] hover:opacity-90 text-white font-medium cursor-pointer"
               >
                 Save Changes
               </Button>
@@ -233,7 +220,7 @@ const Profile = () => {
             <div className="flex justify-end pt-4">
               <Button
                 onClick={handleChangePassword}
-                className="bg-[#181D27] hover:bg-[#2a3142] text-white font-medium cursor-pointer"
+                className="bg-gradient-to-r from-[#355C7D] to-[#725A7A] hover:opacity-90 text-white font-medium cursor-pointer"
               >
                 Update Password
               </Button>
