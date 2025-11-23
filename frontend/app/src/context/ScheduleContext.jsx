@@ -4,22 +4,8 @@ const ScheduleContext = createContext();
 
 export function ScheduleProvider({ children }) {
   const [tasks, setTasks] = useState([]);
-  const [events, setEvents] = useState([
-    {
-      name: "Sample Event",
-      date: "2025-11-22",
-      startTime: "10:00",
-      endTime: "11:00",
-      description: "This is a demo event."
-    },
-    {
-      name: "Team Meeting",
-      date: "2025-11-22",
-      startTime: "14:00",
-      endTime: "16:30",
-      description: "Q4 planning and review session."
-    }
-  ]);
+  const [events, setEvents] = useState([]);
+
 
   const addTask = (task) => {
     if (!task || !task.name) {
@@ -67,7 +53,9 @@ export function ScheduleProvider({ children }) {
     <ScheduleContext.Provider
       value={{
         tasks,
+        setTasks,
         events,
+        setEvents,
         addTask,
         updateTask,
         deleteTask,
