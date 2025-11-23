@@ -10,6 +10,8 @@ dotenv.config();
 import googleCalendarRoutes from './services/google-calendar/google-calendar.routes.js';
 import { errorHandler } from './middlewares/errorHandler.js';
 
+import assistantRoutes from './services/assistant/assistant.routes.js'
+
 const app = express();
 
 // Enable CORS for frontend
