@@ -1,15 +1,17 @@
 import React from 'react';
 import { useSchedule } from '../context/ScheduleContext';
 import { useModal } from '../context/ModalContext';
+import { useThemeSettings } from '../context/ThemeContext';
 import { Button } from '../components/ui/button';
 import AddTaskModal from '../components/AddTaskModal';
 import TaskDetailsModal from '../components/TaskDetailsModal';
+import Sidebar from '../components/Sidebar';
 import { motion } from 'framer-motion';
 import { format, parseISO } from 'date-fns';
 
-const PRIMARY_BG = "#E0E7FF";
-const PRIMARY_DARK = "#181D27";
-const PRIMARY_LIGHT = "#F6F8FF";
+const PRIMARY_BG = "#F7F8FC";
+const PRIMARY_DARK = "#355C7D";
+const PRIMARY_LIGHT = "#FFFFFF";
 
 const PASTEL_COLORS = {
   red: "#FFB3BA",
@@ -23,11 +25,14 @@ const PASTEL_COLORS = {
 export default function Tasks() {
   const { tasks } = useSchedule();
   const { openAddTaskModal, openTaskDetailsModal } = useModal();
+  const { theme } = useThemeSettings();
 
   return (
-    <div className="min-h-screen flex flex-col" style={{ background: PRIMARY_BG }}>
-      {/* Header */}
-      <div className="flex flex-col md:flex-row justify-between items-center p-6">
+    <div className={`flex min-h-screen ${theme === 'dark' ? 'dark' : ''}`} style={{ background: PRIMARY_BG }}>
+      <Sidebar />
+      <div className="flex-1 flex flex-col">
+        {/* Header */}
+        <div className="flex flex-col md:flex-row justify-between items-center p-6">
         <h1 className="text-3xl font-bold" style={{ color: PRIMARY_DARK }}>
           Tasks
         </h1>
@@ -117,9 +122,10 @@ export default function Tasks() {
         </div>
       </motion.div>
 
-      {/* Modals */}
-      <AddTaskModal />
-      <TaskDetailsModal />
+        {/* Modals */}
+        <AddTaskModal />
+        <TaskDetailsModal />
+      </div>
     </div>
   );
 }
