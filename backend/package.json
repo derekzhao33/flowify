@@ -8,14 +8,20 @@
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "tsx ./src/main.ts",
-    "dev": "tsx watch ./src/main.ts"
+    "start": "tsx ./src/server.ts",
+    "dev": "tsx watch ./src/server.ts"
   },
   "dependencies": {
+    "@prisma/adapter-pg": "^7.0.0",
+    "@prisma/client": "^7.0.0",
+    "dotenv": "^17.2.3",
     "express": "^5.1.0",
-    "prisma": "^7.0.0"
+    "express-list-endpoints": "^7.1.1"
   },
   "devDependencies": {
+    "@types/express": "^5.0.5",
+    "@types/node": "^24.10.1",
+    "prisma": "^7.0.0",
     "tsx": "^4.20.6"
   }
 }
