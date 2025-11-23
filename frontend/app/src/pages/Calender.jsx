@@ -214,6 +214,9 @@ export default function Calender() {
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [input, setInput] = useState("");
   const [showSuccess, setShowSuccess] = useState(false);
+  const [aiResponse, setAiResponse] = useState(null);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [showAiPanel, setShowAiPanel] = useState(false);
 
   // Calendar navigation
   const handlePrev = () => {
@@ -227,23 +230,75 @@ export default function Calender() {
     else if (view === "Month") setSelectedDate(addDays(selectedDate, 30));
   };
 
-  // Handle quick task creation from input
-  const handleQuickAdd = () => {
+  // Handle AI-powered task creation
+  const handleQuickAdd = async () => {
     if (!input.trim()) return;
 
-    const parsedTask = parseTaskInput(input);
-    addTask(parsedTask);
+    setIsProcessing(true);
+    setShowAiPanel(true);
+    setAiResponse(null);
 
-    setShowSuccess(true);
-    setInput("");
-    setTimeout(() => {
-      setShowSuccess(false);
-    }, 2000);
+    try {
+      const response = await fetch('http://localhost:3000/api/assistant/process', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          input: input.trim(),
+          userId: 1, // TODO: Replace with actual user ID from auth context
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to process request');
+      }
+
+      setAiResponse(data);
+      
+      // Add created tasks to local state
+      if (data.tasks && data.tasks.length > 0) {
+        data.tasks.forEach(task => {
+          // Convert backend task format to frontend format
+          const frontendTask = {
+            name: task.name,
+            description: task.description || '',
+            date: task.date,
+            startTime: task.startTime,
+            endTime: task.endTime,
+            priority: task.priority || 'medium',
+            color: task.color || Object.keys(PASTEL_COLORS)[Math.floor(Math.random() * 6)],
+            label: task.label || '',
+          };
+          addTask(frontendTask);
+        });
+      }
+      
+      setInput("");
+
+      // Auto-hide AI panel after 5 seconds if successful
+      if (data.tasksCreated > 0) {
+        setTimeout(() => {
+          setShowAiPanel(false);
+        }, 5000);
+      }
+    } catch (error) {
+      console.error('Error processing AI request:', error);
+      setAiResponse({
+        message: error.message || 'Failed to process your request. Please try again.',
+        tasksCreated: 0,
+        tasks: [],
+      });
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   // Handle Enter key in input
   const handleInputKeyDown = (e) => {
-    if (e.key === 'Enter') {
+    if (e.key === 'Enter' && !isProcessing) {
       handleQuickAdd();
     }
   };
@@ -550,53 +605,125 @@ export default function Calender() {
 
       {/* Centered Glassmorphic Input Bar */}
       <div className="w-full flex justify-center items-center py-6" style={{ position: 'relative', zIndex: 20 }}>
-        <div
-          className="flex items-center w-full max-w-2xl px-6 py-4 gap-3 relative"
-          style={{
-            background: 'rgba(255,255,255,0.85)',
-            borderRadius: '50px',
-            boxShadow: '0 8px 32px rgba(236, 72, 153, 0.25), 0 0 60px rgba(168, 85, 247, 0.15), inset 0 2px 10px rgba(255,255,255,0.8)',
-            backdropFilter: 'blur(12px)',
-            border: '3px solid transparent',
-            backgroundImage: 'linear-gradient(rgba(255,255,255,0.85), rgba(255,255,255,0.85)), linear-gradient(90deg, #EC4899, #A855F7, #3B82F6, #10B981, #EC4899)',
-            backgroundOrigin: 'border-box',
-            backgroundClip: 'padding-box, border-box',
-            margin: '0 auto',
-            position: 'relative',
-            animation: 'liquify 3s ease-in-out infinite',
-          }}
-        >
-          {showSuccess && (
-            <div className="absolute -top-16 left-1/2 transform -translate-x-1/2 bg-green-500 text-white px-6 py-3 rounded-2xl shadow-lg flex items-center gap-2 animate-in fade-in slide-in-from-bottom-2">
-              <span className="text-2xl">✓</span>
-              <span className="font-semibold">Task created successfully!</span>
-            </div>
+        <div className="w-full max-w-2xl mx-auto" style={{ position: 'relative' }}>
+          {/* AI Response Panel - Slides up from input */}
+          {showAiPanel && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 20 }}
+              className="absolute bottom-full mb-4 w-full px-6 py-4 rounded-3xl shadow-2xl"
+              style={{
+                background: aiResponse?.tasksCreated > 0 
+                  ? 'linear-gradient(135deg, #d4f1f4 0%, #e0f2fe 100%)'
+                  : 'linear-gradient(135deg, #e0e7ff 0%, #ddd6fe 100%)',
+                backdropFilter: 'blur(10px)',
+                border: '2px solid',
+                borderColor: aiResponse?.tasksCreated > 0 
+                  ? '#0ea5e9' 
+                  : '#a78bfa',
+              }}
+            >
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex-1">
+                  {/* AI Message */}
+                  <p className="text-base font-semibold mb-2" style={{ 
+                    color: aiResponse?.tasksCreated > 0 
+                      ? '#0c4a6e' 
+                      : '#5b21b6'
+                  }}>
+                    {isProcessing ? 'Processing your request...' : aiResponse?.message}
+                  </p>
+                  
+                  {/* Missing Info */}
+                  {aiResponse?.missingInfo && aiResponse.missingInfo.length > 0 && (
+                    <div className="mt-2 text-sm" style={{ color: '#6b21a8' }}>
+                      <span className="font-medium">ℹ️ Please provide:</span>
+                      <ul className="list-disc list-inside ml-2">
+                        {aiResponse.missingInfo.map((info, i) => (
+                          <li key={i}>{info}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  
+                  {/* Conflicts */}
+                  {aiResponse?.conflicts && aiResponse.conflicts.length > 0 && (
+                    <div className="mt-2 text-sm" style={{ color: '#b91c1c' }}>
+                      <span className="font-medium">⚠️ Conflicts:</span>
+                      <ul className="list-disc list-inside ml-2">
+                        {aiResponse.conflicts.map((conflict, i) => (
+                          <li key={i}>{conflict}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  
+                  {/* Tasks Created Count */}
+                  {aiResponse?.tasksCreated > 0 && (
+                    <div className="mt-2 flex items-center gap-2">
+                      <span className="text-2xl">✅</span>
+                      <span className="text-sm font-medium" style={{ color: '#0c4a6e' }}>
+                        {aiResponse.tasksCreated} task{aiResponse.tasksCreated > 1 ? 's' : ''} created successfully
+                      </span>
+                    </div>
+                  )}
+                </div>
+                
+                {/* Close button */}
+                <button
+                  onClick={() => setShowAiPanel(false)}
+                  className="text-gray-500 hover:text-gray-700 transition-colors"
+                  style={{ fontSize: '1.5rem', lineHeight: 1 }}
+                >
+                  ×
+                </button>
+              </div>
+            </motion.div>
           )}
-          <Input
-            className="flex-1 text-lg border-0 focus:ring-0 focus:outline-none bg-transparent"
-            placeholder="Type task details (e.g. 'Meeting from 2pm to 4pm urgent' or 'Workout at 6am [fitness]')"
-            value={input}
-            onChange={e => setInput(e.target.value)}
-            onKeyDown={handleInputKeyDown}
-            style={{ color: '#1a1a1a', fontWeight: 500 }}
-          />
-          <Button variant="ghost" style={{ color: '#A855F7', borderRadius: 16 }}>
-            <MicIcon size={24} />
-          </Button>
-          <Button
-            onClick={handleQuickAdd}
-            disabled={!input.trim()}
+
+          {/* Input Bar */}
+          <div
+            className="flex items-center px-6 py-4 gap-3 relative"
             style={{
-              background: input.trim() ? '#EC4899' : '#9CA3AF',
-              color: '#fff',
-              borderRadius: 16,
-              fontWeight: 600,
-              boxShadow: input.trim() ? '0 2px 8px 0 rgba(236,72,153,0.18)' : 'none',
-              cursor: input.trim() ? 'pointer' : 'not-allowed'
+              background: 'rgba(255,255,255,0.85)',
+              borderRadius: '50px',
+              boxShadow: '0 8px 32px rgba(236, 72, 153, 0.25), 0 0 60px rgba(168, 85, 247, 0.15), inset 0 2px 10px rgba(255,255,255,0.8)',
+              backdropFilter: 'blur(12px)',
+              border: '3px solid transparent',
+              backgroundImage: 'linear-gradient(rgba(255,255,255,0.85), rgba(255,255,255,0.85)), linear-gradient(90deg, #EC4899, #A855F7, #3B82F6, #10B981, #EC4899)',
+              backgroundOrigin: 'border-box',
+              backgroundClip: 'padding-box, border-box',
+              animation: 'liquify 3s ease-in-out infinite',
             }}
           >
-            Add
-          </Button>
+            <Input
+              className="flex-1 text-lg border-0 focus:ring-0 focus:outline-none bg-transparent"
+              placeholder="Tell me what you need to do... (e.g. 'meeting from 2-4pm', 'study for exam at 6pm for 2 hours')"
+              value={input}
+              onChange={e => setInput(e.target.value)}
+              onKeyDown={handleInputKeyDown}
+              disabled={isProcessing}
+              style={{ color: '#1a1a1a', fontWeight: 500 }}
+            />
+            <Button variant="ghost" style={{ color: '#A855F7', borderRadius: 16 }}>
+              <MicIcon size={24} />
+            </Button>
+            <Button
+              onClick={handleQuickAdd}
+              disabled={!input.trim() || isProcessing}
+              style={{
+                background: input.trim() && !isProcessing ? '#EC4899' : '#9CA3AF',
+                color: '#fff',
+                borderRadius: 16,
+                fontWeight: 600,
+                boxShadow: input.trim() && !isProcessing ? '0 2px 8px 0 rgba(236,72,153,0.18)' : 'none',
+                cursor: input.trim() && !isProcessing ? 'pointer' : 'not-allowed'
+              }}
+            >
+              {isProcessing ? '...' : 'Add'}
+            </Button>
+          </div>
         </div>
       </div>
 
