@@ -18,38 +18,9 @@ import Tasks from './pages/Tasks.jsx'
 import Settings from './pages/Settings.jsx'
 // @ts-ignore
 import Profile from './pages/Profile.jsx'
-import Confetti from 'react-confetti'
-import { useEffect, useState } from 'react'
-
-function ConfettiWrapper() {
-  const { showConfetti } = useSchedule();
-  const [windowSize, setWindowSize] = useState({ width: window.innerWidth, height: window.innerHeight });
-
-  useEffect(() => {
-    const handleResize = () => {
-      setWindowSize({ width: window.innerWidth, height: window.innerHeight });
-    };
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
-
-  if (!showConfetti) return null;
-
-  return (
-    <Confetti
-      width={windowSize.width}
-      height={windowSize.height}
-      recycle={false}
-      numberOfPieces={500}
-      gravity={0.3}
-    />
-  );
-}
-
 function AppContent() {
   return (
     <>
-      <ConfettiWrapper />
       <Router>
         <div className="app-container">
           <Routes>

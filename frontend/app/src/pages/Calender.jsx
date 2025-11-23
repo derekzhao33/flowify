@@ -1,13 +1,14 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useSchedule } from "../context/ScheduleContext";
 import { useModal } from "../context/ModalContext";
 import { useThemeSettings } from "../context/ThemeContext";
+import { useGoogleCalendar } from "../hooks/useGoogleCalendar";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "../components/ui/popover";
 import { motion } from "framer-motion";
 import { format, addDays, subDays, startOfWeek, endOfWeek, startOfMonth, endOfMonth, isSameDay, isSameWeek, isSameMonth, parseISO, setHours, setMinutes, getHours, getMinutes } from "date-fns";
-import { CalendarIcon, MicIcon, CheckCircle2 } from "lucide-react";
+import { CalendarIcon, MicIcon, CheckCircle2, RefreshCw } from "lucide-react";
 import AddTaskModal from "../components/AddTaskModal";
 import TaskDetailsModal from "../components/TaskDetailsModal";
 import Sidebar, { useSidebar } from "../components/Sidebar";
@@ -51,6 +52,41 @@ const styles = `
       box-shadow: 0 9px 30px rgba(16, 185, 129, 0.22), 0 0 68px rgba(59, 130, 246, 0.2), inset 0 2px 11px rgba(255,255,255,0.9);
     }
   }
+
+  @keyframes liquify-day {
+    0%, 100% {
+      border-radius: 24px;
+      box-shadow: 0 8px 24px rgba(236, 72, 153, 0.2), 0 0 40px rgba(168, 85, 247, 0.1), inset 0 1px 8px rgba(255,255,255,0.6);
+    }
+    25% {
+      border-radius: 20px 28px 24px 22px;
+      box-shadow: 0 10px 28px rgba(168, 85, 247, 0.25), 0 0 50px rgba(236, 72, 153, 0.15), inset 0 1px 10px rgba(255,255,255,0.7);
+    }
+    50% {
+      border-radius: 26px 22px 25px 21px;
+      box-shadow: 0 12px 32px rgba(59, 130, 246, 0.2), 0 0 45px rgba(16, 185, 129, 0.12), inset 0 2px 12px rgba(255,255,255,0.65);
+    }
+    75% {
+      border-radius: 22px 26px 20px 28px;
+      box-shadow: 0 9px 26px rgba(16, 185, 129, 0.18), 0 0 48px rgba(59, 130, 246, 0.15), inset 0 1px 9px rgba(255,255,255,0.7);
+    }
+  }
+
+  @keyframes liquify-week {
+    0%, 100% {
+      border-radius: 32px;
+    }
+    25% {
+      border-radius: 28px 36px 32px 30px;
+    }
+    50% {
+      border-radius: 34px 30px 33px 29px;
+    }
+    75% {
+      border-radius: 30px 34px 28px 36px;
+    }
+  }
+
 `;
 
 // Inject styles
@@ -207,14 +243,65 @@ function parseTaskInput(input) {
 }
 
 export default function Calender() {
-  const { events, tasks, addTask, completeTask } = useSchedule();
+  const { events, tasks, addTask, completeTask, syncGoogleCalendarEvents, getAllEvents } = useSchedule();
   const { openAddTaskModal, openTaskDetailsModal } = useModal();
   const { theme } = useThemeSettings();
   const { isCollapsed } = useSidebar();
+  const {
+    isAuthenticated,
+    isLoading: googleLoading,
+    error: googleError,
+    checkAuthStatus,
+    connectGoogleCalendar,
+    fetchGoogleCalendarEvents,
+    disconnectGoogleCalendar
+  } = useGoogleCalendar();
   const [view, setView] = useState("Day");
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [input, setInput] = useState("");
   const [showSuccess, setShowSuccess] = useState(false);
+  const [syncMessage, setSyncMessage] = useState("");
+
+  // Check Google Calendar auth status on mount
+  useEffect(() => {
+    checkAuthStatus();
+
+    // Check if we just returned from Google OAuth
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('google_auth') === 'success') {
+      setSyncMessage('Successfully connected to Google Calendar!');
+      setTimeout(() => setSyncMessage(''), 3000);
+      handleSyncGoogleCalendar();
+      // Clean up URL
+      window.history.replaceState({}, '', window.location.pathname);
+    } else if (urlParams.get('google_auth') === 'error') {
+      setSyncMessage('Failed to connect to Google Calendar');
+      setTimeout(() => setSyncMessage(''), 3000);
+      // Clean up URL
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, []);
+
+  // Sync Google Calendar events
+  const handleSyncGoogleCalendar = async () => {
+    try {
+      setSyncMessage('Syncing with Google Calendar...');
+
+      // Fetch events for current month
+      const startDate = startOfMonth(selectedDate);
+      const endDate = endOfMonth(selectedDate);
+
+      const googleEvents = await fetchGoogleCalendarEvents(startDate, endDate);
+      syncGoogleCalendarEvents(googleEvents);
+
+      setSyncMessage(`Synced ${googleEvents.length} events from Google Calendar!`);
+      setTimeout(() => setSyncMessage(''), 3000);
+    } catch (error) {
+      console.error('Failed to sync:', error);
+      setSyncMessage('Failed to sync with Google Calendar');
+      setTimeout(() => setSyncMessage(''), 3000);
+    }
+  };
 
   // Calendar navigation
   const handlePrev = () => {
@@ -249,8 +336,9 @@ export default function Calender() {
     }
   };
 
-  // Timeline for day view
-  const timeline = getTimeline(events, selectedDate);
+  // Timeline for day view - use merged events
+  const allEvents = getAllEvents();
+  const timeline = getTimeline(allEvents, selectedDate);
   const todaysTasks = getTasksForDay(tasks, selectedDate);
 
   // Helper: parse "HH:mm" to Date object on selectedDate
@@ -272,10 +360,10 @@ export default function Calender() {
           {/* Days columns */}
           <div className="flex-1 grid grid-cols-7 gap-2 h-full">
             {days.map((day, dayIdx) => {
-              const dayEvents = getTimeline(events, day);
+              const dayEvents = getTimeline(allEvents, day);
               const dayTasks = getTasksForDay(tasks, day);
               return (
-                <div key={dayIdx} className="relative border-l flex flex-col h-full rounded-3xl" style={{minWidth: 120, flex: 1, background: '#f3f4f6', border: '1px solid #e5e7eb', boxShadow: '0 0 30px rgba(168, 85, 247, 0.15), inset 0 0 20px rgba(255,255,255,0.3)', backdropFilter: 'blur(10px) saturate(150%)'}}>
+                <div key={dayIdx} className="relative border-l flex flex-col h-full rounded-3xl" style={{minWidth: 120, flex: 1, background: '#f3f4f6', border: '1px solid #e5e7eb', boxShadow: '0 0 30px rgba(168, 85, 247, 0.15), inset 0 0 20px rgba(255,255,255,0.3)', backdropFilter: 'blur(10px) saturate(150%)', animation: 'liquify-week 5s ease-in-out infinite'}}>
                   {/* Day header */}
                   <div className="sticky top-0 z-10 rounded-t-3xl p-2 text-center font-bold border-b flex items-center justify-center" style={{height: 40, color: '#A855F7', background: 'rgba(200,180,240,0.05)', borderBottomColor: '#e5e7eb', textShadow: '0 0 20px rgba(168, 85, 247, 0.6), 0 0 40px rgba(168, 85, 247, 0.3)'}}>{format(day, "EEE d")}</div>
                   {/* Timeline slots */}
@@ -286,13 +374,23 @@ export default function Calender() {
                     {/* Events */}
                     {dayEvents.map((event, i) => {
                       const style = getEventStyle(event);
+                      const isGoogleEvent = event.source === 'google-calendar';
                       return (
                         <div
                           key={i}
-                          className="absolute left-2 right-2 bg-white rounded-xl p-2 flex flex-col justify-center border border-pink-200/40 shadow-pink-500/10"
-                          style={{ ...style, minHeight: 24, zIndex: 2, overflow: 'visible' }}
+                          className="absolute left-2 right-2 rounded-xl p-2 flex flex-col justify-center border"
+                          style={{
+                            ...style,
+                            minHeight: 24,
+                            zIndex: 2,
+                            overflow: 'visible',
+                            background: isGoogleEvent ? '#fef2f2' : '#fff',
+                            borderColor: isGoogleEvent ? '#fca5a5' : 'rgba(236, 72, 153, 0.4)'
+                          }}
                         >
-                          <div className="font-semibold text-pink-600 text-xs whitespace-normal break-words">{event.name}</div>
+                          <div className={`font-semibold text-xs whitespace-normal break-words ${isGoogleEvent ? 'text-red-600' : 'text-pink-600'}`}>
+                            {isGoogleEvent && '📅 '}{event.name}
+                          </div>
                         </div>
                       );
                     })}
@@ -344,7 +442,7 @@ export default function Calender() {
         <div className="grid grid-cols-7 gap-2 mt-4 min-h-[calc(100vh-220px)]" style={{alignItems: 'stretch'}}>
           {days.map((d, i) => {
             const dayTasks = getTasksForDay(tasks, d);
-            const dayEvents = getTimeline(events, d);
+            const dayEvents = getTimeline(allEvents, d);
             const isCurrentMonth = isSameMonth(d, selectedDate);
             const isToday = isSameDay(d, today);
             return (
@@ -359,6 +457,8 @@ export default function Calender() {
                   boxShadow: isToday ? '0 0 20px rgba(239, 68, 68, 0.4), 0 0 40px rgba(239, 68, 68, 0.2)' : 'none',
                   transition: 'all 0.3s ease',
                   cursor: 'default',
+                  animation: isCurrentMonth ? 'liquify-week 6s ease-in-out infinite' : 'none',
+                  animationDelay: `${i * 0.1}s`
                 }}
                 onMouseEnter={(e) => {
                   if (isCurrentMonth && !isToday) {
@@ -375,11 +475,22 @@ export default function Calender() {
               >
                 <div className="font-bold mb-2" style={{ color: isToday ? '#EF4444' : '#3B82F6', textShadow: isToday ? '0 0 15px rgba(239, 68, 68, 0.5), 0 0 30px rgba(239, 68, 68, 0.25)' : '0 0 15px rgba(59, 130, 246, 0.5), 0 0 30px rgba(59, 130, 246, 0.25)' }}>{format(d, "d")}</div>
                 <div className="space-y-1 flex-1">
-                  {dayEvents.slice(0, 1).map((e, j) => (
-                    <div key={j} className="text-xs bg-white rounded px-2 py-1 text-pink-600 truncate border border-pink-200/40">
-                      {e.name}
-                    </div>
-                  ))}
+                  {dayEvents.slice(0, 1).map((e, j) => {
+                    const isGoogleEvent = e.source === 'google-calendar';
+                    return (
+                      <div
+                        key={j}
+                        className="text-xs rounded px-2 py-1 truncate border"
+                        style={{
+                          background: isGoogleEvent ? '#fef2f2' : '#fff',
+                          color: isGoogleEvent ? '#dc2626' : '#db2777',
+                          borderColor: isGoogleEvent ? '#fca5a5' : 'rgba(236, 72, 153, 0.4)'
+                        }}
+                      >
+                        {isGoogleEvent && '📅 '}{e.name}
+                      </div>
+                    );
+                  })}
                   {dayTasks.slice(0, 2).map((task, j) => {
                     return (
                       <div
@@ -439,6 +550,37 @@ export default function Calender() {
           >
             + Add Task
           </Button>
+          {isAuthenticated ? (
+            <Button
+              onClick={handleSyncGoogleCalendar}
+              disabled={googleLoading}
+              className="px-6 py-3 font-semibold rounded-xl shadow-lg hover:shadow-xl hover:scale-105 transition backdrop-blur-md border flex items-center gap-2"
+              style={{
+                background: 'rgba(234, 67, 53, 0.15)',
+                color: '#EA4335',
+                borderColor: 'rgba(234, 67, 53, 0.3)',
+                cursor: googleLoading ? 'wait' : 'pointer'
+              }}
+            >
+              <RefreshCw className={`h-4 w-4 ${googleLoading ? 'animate-spin' : ''}`} />
+              Sync Google Calendar
+            </Button>
+          ) : (
+            <Button
+              onClick={connectGoogleCalendar}
+              disabled={googleLoading}
+              className="px-6 py-3 font-semibold rounded-xl shadow-lg hover:shadow-xl hover:scale-105 transition backdrop-blur-md border flex items-center gap-2"
+              style={{
+                background: 'rgba(234, 67, 53, 0.15)',
+                color: '#EA4335',
+                borderColor: 'rgba(234, 67, 53, 0.3)',
+                cursor: 'pointer'
+              }}
+            >
+              <CalendarIcon className="h-4 w-4" />
+              Connect Google Calendar
+            </Button>
+          )}
         </div>
         <div className="flex gap-2 mt-4 md:mt-0">
           {VIEW_OPTIONS.map((opt, idx) => {
@@ -465,6 +607,15 @@ export default function Calender() {
         </div>
       </div>
 
+      {/* Sync Status Message */}
+      {syncMessage && (
+        <div className="px-6 mt-2">
+          <div className="bg-blue-50 border border-blue-200 text-blue-700 px-4 py-2 rounded-lg text-center">
+            {syncMessage}
+          </div>
+        </div>
+      )}
+
       {/* Calendar Grid */}
       <motion.div
         className="px-6 flex-1 flex flex-col min-h-0"
@@ -488,7 +639,7 @@ export default function Calender() {
                     ))}
                   </div>
                   {/* Timeline slots and events inside white area */}
-                  <div className="relative flex-1 min-h-0 flex flex-col rounded-2xl shadow-xl border" style={{ background: PRIMARY_LIGHT, border: `1px solid ${BORDER_COLOR}`, height: 960 }}>
+                  <div className="relative flex-1 min-h-0 flex flex-col rounded-2xl shadow-xl border" style={{ background: PRIMARY_LIGHT, border: `1px solid ${BORDER_COLOR}`, height: 960, animation: 'liquify-day 4s ease-in-out infinite' }}>
                     {/* Time slots */}
                     <div className="flex-1 flex flex-col justify-between" style={{height: 960}}>
                       {Array.from({ length: TIME_END - TIME_START }, (_, i) => (
@@ -498,12 +649,24 @@ export default function Calender() {
                     {/* Events */}
                     {timeline.map((event, i) => {
                       const style = getEventStyle(event);
+                      const isGoogleEvent = event.source === 'google-calendar';
                       return (
                         <div
                           key={i}
-                          className="absolute left-2 right-2 bg-white rounded-xl p-4 flex flex-row items-center gap-2 border border-indigo-100"
-                          style={{ ...style, minHeight: 24, zIndex: 2, boxShadow: 'none', overflow: 'visible' }}
+                          className="absolute left-2 right-2 bg-white rounded-xl p-4 flex flex-row items-center gap-2 border"
+                          style={{
+                            ...style,
+                            minHeight: 24,
+                            zIndex: 2,
+                            boxShadow: 'none',
+                            overflow: 'visible',
+                            borderColor: isGoogleEvent ? '#EA4335' : '#c7d2fe',
+                            background: isGoogleEvent ? '#fef2f2' : '#fff'
+                          }}
                         >
+                          {isGoogleEvent && (
+                            <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded">Google</span>
+                          )}
                           <div className="font-semibold text-indigo-900 whitespace-nowrap">{event.name}</div>
                           <div className="text-xs text-gray-600 whitespace-normal break-words flex-1">{event.description}</div>
                         </div>
@@ -526,10 +689,19 @@ export default function Calender() {
                             border: `2px solid ${taskColor}`,
                             overflow: 'visible',
                             opacity: task.completed ? 0 : 1,
+                            filter: task.completed ? 'blur(4px)' : 'blur(0px)',
                             transform: task.completed ? 'scale(0.95)' : 'scale(1)',
-                            transition: 'opacity 1s ease-out, transform 1s ease-out'
+                            transition: 'opacity 1.5s ease-out, transform 1.5s ease-out, filter 1.5s ease-out'
                           }}
-                          onClick={() => !task.completed && openTaskDetailsModal(task, taskIndex)}
+                          onClick={(e) => {
+                            if (!task.completed) {
+                              // Check if click is on the complete button area (left side)
+                              const isCompleteButton = e.target.closest('button');
+                              if (!isCompleteButton) {
+                                openTaskDetailsModal(task, taskIndex);
+                              }
+                            }
+                          }}
                         >
                           <Button
                             variant="ghost"
@@ -537,7 +709,9 @@ export default function Calender() {
                             className="p-1 h-auto hover:bg-white/30 transition-all opacity-0 group-hover:opacity-100"
                             onClick={(e) => {
                               e.stopPropagation();
-                              completeTask(taskIndex);
+                              if (!task.completed) {
+                                completeTask(taskIndex);
+                              }
                             }}
                             style={{ cursor: 'pointer' }}
                             disabled={task.completed}

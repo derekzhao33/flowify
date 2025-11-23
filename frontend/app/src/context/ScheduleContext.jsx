@@ -2,13 +2,10 @@ import { createContext, useContext, useState } from "react";
 
 const ScheduleContext = createContext();
 
-// Create a separate context for confetti state
-const ConfettiContext = createContext();
-
 export function ScheduleProvider({ children }) {
   const [tasks, setTasks] = useState([]);
   const [events, setEvents] = useState([]);
-  const [showConfetti, setShowConfetti] = useState(false);
+  const [googleCalendarEvents, setGoogleCalendarEvents] = useState([]);
 
 
   const addTask = (task) => {
@@ -36,8 +33,6 @@ export function ScheduleProvider({ children }) {
     if (index < 0 || index >= tasks.length) {
       throw new Error("Invalid task index");
     }
-    // Trigger confetti
-    setShowConfetti(true);
     // Mark task as completed with strikethrough
     setTasks((prev) => prev.map((task, i) =>
       i === index ? { ...task, completed: true } : task
@@ -45,8 +40,6 @@ export function ScheduleProvider({ children }) {
     // Fade out and remove after animation
     setTimeout(() => {
       setTasks((prev) => prev.filter((_, i) => i !== index));
-      // Stop confetti after 3 seconds
-      setTimeout(() => setShowConfetti(false), 3000);
     }, 1500); // Give time for strikethrough animation
   };
 
@@ -71,6 +64,15 @@ export function ScheduleProvider({ children }) {
     setEvents((prev) => prev.filter((_, i) => i !== index));
   };
 
+  const syncGoogleCalendarEvents = (googleEvents) => {
+    setGoogleCalendarEvents(googleEvents);
+  };
+
+  // Merge local events and Google Calendar events
+  const getAllEvents = () => {
+    return [...events, ...googleCalendarEvents];
+  };
+
   return (
     <ScheduleContext.Provider
       value={{
@@ -78,6 +80,7 @@ export function ScheduleProvider({ children }) {
         setTasks,
         events,
         setEvents,
+        googleCalendarEvents,
         addTask,
         updateTask,
         deleteTask,
@@ -85,13 +88,11 @@ export function ScheduleProvider({ children }) {
         addEvent,
         updateEvent,
         deleteEvent,
-        showConfetti,
-        setShowConfetti
+        syncGoogleCalendarEvents,
+        getAllEvents
       }}
     >
-      <ConfettiContext.Provider value={{ showConfetti, setShowConfetti }}>
-        {children}
-      </ConfettiContext.Provider>
+      {children}
     </ScheduleContext.Provider>
   );
 }
