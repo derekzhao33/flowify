@@ -315,23 +315,75 @@ export default function Calender() {
     else if (view === "Month") setSelectedDate(addDays(selectedDate, 30));
   };
 
-  // Handle quick task creation from input
-  const handleQuickAdd = () => {
+  // Handle AI-powered task creation
+  const handleQuickAdd = async () => {
     if (!input.trim()) return;
 
-    const parsedTask = parseTaskInput(input);
-    addTask(parsedTask);
+    setIsProcessing(true);
+    setShowAiPanel(true);
+    setAiResponse(null);
 
-    setShowSuccess(true);
-    setInput("");
-    setTimeout(() => {
-      setShowSuccess(false);
-    }, 2000);
+    try {
+      const response = await fetch('http://localhost:3000/api/assistant/process', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          input: input.trim(),
+          userId: 1, // TODO: Replace with actual user ID from auth context
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to process request');
+      }
+
+      setAiResponse(data);
+      
+      // Add created tasks to local state
+      if (data.tasks && data.tasks.length > 0) {
+        data.tasks.forEach(task => {
+          // Convert backend task format to frontend format
+          const frontendTask = {
+            name: task.name,
+            description: task.description || '',
+            date: task.date,
+            startTime: task.startTime,
+            endTime: task.endTime,
+            priority: task.priority || 'medium',
+            color: task.color || Object.keys(PASTEL_COLORS)[Math.floor(Math.random() * 6)],
+            label: task.label || '',
+          };
+          addTask(frontendTask);
+        });
+      }
+      
+      setInput("");
+
+      // Auto-hide AI panel after 5 seconds if successful
+      if (data.tasksCreated > 0) {
+        setTimeout(() => {
+          setShowAiPanel(false);
+        }, 5000);
+      }
+    } catch (error) {
+      console.error('Error processing AI request:', error);
+      setAiResponse({
+        message: error.message || 'Failed to process your request. Please try again.',
+        tasksCreated: 0,
+        tasks: [],
+      });
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   // Handle Enter key in input
   const handleInputKeyDown = (e) => {
-    if (e.key === 'Enter') {
+    if (e.key === 'Enter' && !isProcessing) {
       handleQuickAdd();
     }
   };
@@ -791,8 +843,33 @@ export default function Calender() {
               cursor: input.trim() ? 'pointer' : 'not-allowed'
             }}
           >
-            Add
-          </Button>
+            <Input
+              className="flex-1 text-lg border-0 focus:ring-0 focus:outline-none bg-transparent"
+              placeholder="Tell me what you need to do... (e.g. 'meeting from 2-4pm', 'study for exam at 6pm for 2 hours')"
+              value={input}
+              onChange={e => setInput(e.target.value)}
+              onKeyDown={handleInputKeyDown}
+              disabled={isProcessing}
+              style={{ color: '#1a1a1a', fontWeight: 500 }}
+            />
+            <Button variant="ghost" style={{ color: '#A855F7', borderRadius: 16 }}>
+              <MicIcon size={24} />
+            </Button>
+            <Button
+              onClick={handleQuickAdd}
+              disabled={!input.trim() || isProcessing}
+              style={{
+                background: input.trim() && !isProcessing ? '#EC4899' : '#9CA3AF',
+                color: '#fff',
+                borderRadius: 16,
+                fontWeight: 600,
+                boxShadow: input.trim() && !isProcessing ? '0 2px 8px 0 rgba(236,72,153,0.18)' : 'none',
+                cursor: input.trim() && !isProcessing ? 'pointer' : 'not-allowed'
+              }}
+            >
+              {isProcessing ? '...' : 'Add'}
+            </Button>
+          </div>
         </div>
       </div>
 
