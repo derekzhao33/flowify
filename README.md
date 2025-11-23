@@ -11,7 +11,20 @@
    ```bash
    npm install
    ```
-3. Start the development server:
+3. Migrate the database
+   ```bash
+   npx prisma migrate dev --name init
+   ```
+4. Initialize prisma
+   ```bash
+   npx prisma init
+   ```
+5. Set DATABASE_URL in .env file
+4. Generate prisma files
+   ```bash
+   npx prisma generate
+   ```
+5. Start the development server:
    ```bash
    npm run start:dev
    ```
