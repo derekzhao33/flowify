@@ -1,53 +1,65 @@
 import React, { useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { LayoutDashboard, Calendar, List, Bot, BarChart3, Settings, User, ChevronLeft, ChevronRight, TrendingUp, TrendingDown, Plus, Search, Filter, Clock, AlertCircle, CheckCircle, Zap } from 'lucide-react';
 import { useModal } from '../context/ModalContext';
-import { useThemeSettings } from '../context/ThemeContext';
+import { useSidebar } from '../components/Sidebar';
 import AddTaskModal from '../components/AddTaskModal';
 import TaskDetailsModal from '../components/TaskDetailsModal';
-import Sidebar, { useSidebar } from '../components/Sidebar';
-import { Button } from '../components/ui/button';
+import Sidebar from '../components/Sidebar';
 
-// Add CSS animation keyframes for liquify
-const styles = `
-  @keyframes liquify-card {
-    0%, 100% {
-      border-radius: 24px;
+const slideInStyles = `
+  @keyframes slideInFromRight {
+    from {
+      opacity: 0;
+      transform: translateX(100px);
     }
-    25% {
-      border-radius: 20px 28px 24px 22px;
+    to {
+      opacity: 1;
+      transform: translateX(0);
     }
-    50% {
-      border-radius: 26px 22px 25px 21px;
+  }
+  
+  @keyframes slideOutToLeft {
+    from {
+      opacity: 1;
+      transform: translateX(0);
     }
-    75% {
-      border-radius: 22px 26px 20px 28px;
+    to {
+      opacity: 0;
+      transform: translateX(-100px);
     }
   }
 `;
 
-// Inject styles
-if (typeof document !== 'undefined') {
-  const styleSheet = document.createElement("style");
-  styleSheet.innerText = styles;
-  if (!document.head.querySelector('style[data-liquify-dashboard]')) {
-    styleSheet.setAttribute('data-liquify-dashboard', 'true');
-    document.head.appendChild(styleSheet);
-  }
-}
-
-export default function DashboardPreview() {
+export default function Dashboard() {
   const { openAddTaskModal } = useModal();
-  const { theme } = useThemeSettings();
   const { isCollapsed } = useSidebar();
   const [showTodaysDeadlines, setShowTodaysDeadlines] = useState(false);
+  const [activeFilter, setActiveFilter] = useState('all');
+  const [isTransitioning, setIsTransitioning] = useState(false);
 
-  // Mock data for preview
+  // Get time-based greeting
+  const getGreeting = () => {
+    const hour = new Date().getHours();
+    if (hour < 12) return 'Good morning';
+    if (hour < 18) return 'Good afternoon';
+    return 'Good night';
+  };
+
+  const handleViewToggle = () => {
+    setIsTransitioning(true);
+    setTimeout(() => {
+      setShowTodaysDeadlines(!showTodaysDeadlines);
+      setIsTransitioning(false);
+    }, 300);
+  };
+
+  // Mock data
   const mockTasks = [
-    { name: 'Complete project proposal', description: 'Finalize slides and submit', date: '2025-11-23', priority: 'high' },
-    { name: 'Team meeting preparation', description: 'Prepare agenda and notes', date: '2025-11-24', priority: 'medium' },
-    { name: 'Code review', description: 'Review pull requests', date: '2025-11-25', priority: 'medium' },
-    { name: 'Client presentation', description: 'Present Q4 results', date: '2025-11-26', priority: 'high' },
-    { name: 'Update documentation', description: 'API documentation updates', date: '2025-11-28', priority: 'low' },
+    { name: 'Complete project proposal', description: 'Finalize slides and submit', date: '2025-11-23', priority: 'high', status: 'pending' },
+    { name: 'Team meeting preparation', description: 'Prepare agenda and notes', date: '2025-11-24', priority: 'medium', status: 'pending' },
+    { name: 'Code review', description: 'Review pull requests', date: '2025-11-25', priority: 'medium', status: 'pending' },
+    { name: 'Client presentation', description: 'Present Q4 results', date: '2025-11-26', priority: 'high', status: 'pending' },
+    { name: 'Update documentation', description: 'API documentation updates', date: '2025-11-28', priority: 'low', status: 'pending' },
   ];
 
   const today = '2025-11-23';
@@ -57,234 +69,253 @@ export default function DashboardPreview() {
   const monthTasks = mockTasks;
 
   return (
-    <div className={`flex min-h-screen bg-background ${theme === 'dark' ? 'dark' : ''}`}>
+    <div className="flex min-h-screen bg-gray-50">
+      <style>{slideInStyles}</style>
       <Sidebar />
 
-      {/* Main content - add margin to account for fixed sidebar */}
-      <main className={`flex-1 p-8 space-y-8 transition-all duration-300 ${isCollapsed ? 'ml-20' : 'ml-64'}`}>
-        {/* Header */}
-        <div className="flex justify-between items-center">
-          <h1 className="text-3xl font-bold text-gray-800">Dashboard</h1>
-          <button
-            className="px-6 py-3 bg-pink-500/20 text-pink-700 font-semibold rounded-xl shadow-lg hover:shadow-xl hover:scale-105 transition backdrop-blur-md border border-pink-500/30"
-            onClick={openAddTaskModal}
-            style={{ cursor: 'pointer' }}
-          >
-            + Add Task
-          </button>
+      {/* Main Content */}
+      <main className={`flex-1 transition-all duration-300 ${isCollapsed ? 'ml-20' : 'ml-64'}`}>
+        <div className="p-8 max-w-7xl mx-auto">
+          {/* Header with Search */}
+          <div className="flex justify-between items-center mb-8">
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900">{getGreeting()}, John</h1>
+              <p className="text-gray-500 mt-1">You have {todaysTasks.length} tasks due today</p>
+            </div>
+            <div className="flex gap-3">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+                <input 
+                  type="text" 
+                  placeholder="Search tasks..." 
+                  className="pl-10 pr-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent w-64"
+                />
+              </div>
+              <button 
+                onClick={openAddTaskModal}
+                className="px-6 py-3 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition shadow-sm flex items-center gap-2"
+              >
+                <Plus size={20} />
+                Add Task
+              </button>
+            </div>
+          </div>
+
+          {/* AI Insight Banner */}
+          <div className="mb-8 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-5 flex items-center gap-4">
+            <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center flex-shrink-0">
+              <Zap className="text-white" size={20} />
+            </div>
+            <div className="flex-1">
+              <p className="font-semibold text-gray-900">Smart Suggestion</p>
+              <p className="text-sm text-gray-600">You have 2 high-priority tasks due today. Consider tackling "Complete project proposal" first.</p>
+            </div>
+            <button className="text-sm font-medium text-blue-600 hover:text-blue-700 whitespace-nowrap">
+              View Details →
+            </button>
+          </div>
+
+
+
+          {/* Stats Cards with Trends */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            {/* Today Card */}
+            <div className="bg-white rounded-xl p-5 border border-gray-200 hover:shadow-lg transition cursor-pointer group">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider">Today</h3>
+                <div className="flex items-center gap-1 text-xs font-medium text-green-600 bg-green-50 px-2 py-1 rounded-full">
+                  <TrendingDown size={14} />
+                  <span>-2 from yesterday</span>
+                </div>
+              </div>
+              <div className="flex items-end justify-between">
+                <div>
+                  <p className="text-3xl font-bold text-gray-900 mb-1">{todaysTasks.length}</p>
+                  <p className="text-sm text-gray-500">Tasks Remaining</p>
+                </div>
+                <div className="h-10 flex items-end gap-1">
+                  {[3, 5, 4, 2, 1].map((height, i) => (
+                    <div key={i} className="w-2 bg-blue-200 rounded-t group-hover:bg-blue-400 transition" style={{ height: `${height * 6}px` }}></div>
+                  ))}
+                </div>
+              </div>
+              <div className="mt-3 pt-3 border-t border-gray-100">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-gray-500">Completion Rate</span>
+                  <span className="font-semibold text-gray-900">73%</span>
+                </div>
+                <div className="mt-2 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                  <div className="h-full bg-blue-600 rounded-full transition-all" style={{ width: '73%' }}></div>
+                </div>
+              </div>
+            </div>
+
+            {/* This Week Card */}
+            <div className="bg-white rounded-xl p-5 border border-gray-200 hover:shadow-lg transition cursor-pointer group">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider">This Week</h3>
+                <div className="flex items-center gap-1 text-xs font-medium text-blue-600 bg-blue-50 px-2 py-1 rounded-full">
+                  <TrendingUp size={14} />
+                  <span>+3 from last week</span>
+                </div>
+              </div>
+              <div className="flex items-end justify-between">
+                <div>
+                  <p className="text-3xl font-bold text-gray-900 mb-1">{weekTasks.length}</p>
+                  <p className="text-sm text-gray-500">Total Tasks</p>
+                </div>
+                <div className="h-10 flex items-end gap-1">
+                  {[2, 4, 5, 6, 5].map((height, i) => (
+                    <div key={i} className="w-2 bg-blue-200 rounded-t group-hover:bg-blue-400 transition" style={{ height: `${height * 6}px` }}></div>
+                  ))}
+                </div>
+              </div>
+              <div className="mt-3 pt-3 border-t border-gray-100">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-gray-500">On Track</span>
+                  <span className="font-semibold text-gray-900">4 / 5</span>
+                </div>
+                <div className="mt-2 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                  <div className="h-full bg-green-600 rounded-full transition-all" style={{ width: '80%' }}></div>
+                </div>
+              </div>
+            </div>
+
+            {/* This Month Card */}
+            <div className="bg-white rounded-xl p-5 border border-gray-200 hover:shadow-lg transition cursor-pointer group">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider">This Month</h3>
+                <div className="flex items-center gap-1 text-xs font-medium text-orange-600 bg-orange-50 px-2 py-1 rounded-full">
+                  <TrendingUp size={14} />
+                  <span>+8 from last month</span>
+                </div>
+              </div>
+              <div className="flex items-end justify-between">
+                <div>
+                  <p className="text-3xl font-bold text-gray-900 mb-1">{monthTasks.length}</p>
+                  <p className="text-sm text-gray-500">Planned Tasks</p>
+                </div>
+                <div className="h-10 flex items-end gap-1">
+                  {[3, 3, 4, 5, 6].map((height, i) => (
+                    <div key={i} className="w-2 bg-blue-200 rounded-t group-hover:bg-blue-400 transition" style={{ height: `${height * 6}px` }}></div>
+                  ))}
+                </div>
+              </div>
+              <div className="mt-3 pt-3 border-t border-gray-100">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-gray-500">Average Priority</span>
+                  <span className="font-semibold text-gray-900">Medium-High</span>
+                </div>
+                <div className="mt-2 flex gap-1">
+                  <div className="h-1.5 flex-1 bg-green-600 rounded-full"></div>
+                  <div className="h-1.5 flex-1 bg-amber-600 rounded-full"></div>
+                  <div className="h-1.5 flex-1 bg-red-600 rounded-full"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Filter Bar */}
+          <div className="mb-6 flex items-center justify-between">
+            <div className="flex gap-2">
+              {['all', 'high', 'medium', 'low'].map((filter) => (
+                <button
+                  key={filter}
+                  onClick={() => setActiveFilter(filter)}
+                  className={`px-4 py-2 rounded-lg font-medium text-sm transition ${
+                    activeFilter === filter
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50'
+                  }`}
+                >
+                  {filter.charAt(0).toUpperCase() + filter.slice(1)} Priority
+                </button>
+              ))}
+            </div>
+            <button className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-lg text-gray-700 hover:bg-gray-50 transition">
+              <Filter size={18} />
+              More Filters
+            </button>
+          </div>
+
+          {/* Deadlines Section */}
+          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
+            <div className="p-6 border-b border-gray-200 flex justify-between items-center">
+              <div>
+                <h2 className="text-xl font-bold text-gray-900">
+                  {showTodaysDeadlines ? "Today's Deadlines" : "Upcoming Deadlines"}
+                </h2>
+                <p className="text-sm text-gray-500 mt-1">
+                  {showTodaysDeadlines 
+                    ? `${todaysTasks.length} tasks need your attention today` 
+                    : `Next ${upcomingDeadlines.length} tasks in your pipeline`}
+                </p>
+              </div>
+              <button
+                onClick={handleViewToggle}
+                className="px-4 py-2 text-sm font-medium text-blue-600 hover:bg-blue-50 rounded-lg transition"
+              >
+                {showTodaysDeadlines ? "View Upcoming →" : "View Today's →"}
+              </button>
+            </div>
+            
+            <div className="p-6 overflow-hidden">
+              <div
+                style={{
+                  animation: isTransitioning ? 'slideOutToLeft 0.3s ease-in-out forwards' : 'slideInFromRight 0.3s ease-in-out forwards',
+                }}
+              >
+                {(showTodaysDeadlines ? todaysTasks : upcomingDeadlines).length > 0 ? (
+                  <div className="space-y-3">
+                    {(showTodaysDeadlines ? todaysTasks : upcomingDeadlines).map((task, index) => (
+                      <div
+                        key={index}
+                        className="group flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:border-blue-300 hover:bg-blue-50/30 transition cursor-pointer"
+                      >
+                        <div className="flex items-center gap-4 flex-1">
+                          <button className="w-5 h-5 rounded border-2 border-gray-300 hover:border-blue-600 transition flex items-center justify-center group-hover:border-blue-600">
+                            <CheckCircle size={14} className="text-gray-300 group-hover:text-blue-600" />
+                          </button>
+                          <div className="w-1 h-12 bg-blue-600 rounded-full"></div>
+                          <div className="flex-1">
+                            <p className="font-semibold text-gray-900 group-hover:text-blue-600 transition">{task.name}</p>
+                            <p className="text-sm text-gray-500 mt-0.5">{task.description}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-4">
+                          <div className="text-right">
+                            <p className="text-xs text-gray-400 uppercase tracking-wider">Due Date</p>
+                            <p className="text-sm font-semibold text-gray-900">
+                              {new Date(task.date).toLocaleDateString('en-US', {
+                                month: 'short',
+                                day: 'numeric'
+                              })}
+                            </p>
+                          </div>
+                          <span className={`text-xs px-3 py-1.5 rounded-lg font-semibold ${
+                            task.priority === 'high' 
+                              ? 'bg-red-50 text-red-700 border border-red-200' 
+                              : task.priority === 'medium' 
+                              ? 'bg-amber-50 text-amber-700 border border-amber-200' 
+                              : 'bg-green-50 text-green-700 border border-green-200'
+                          }`}>
+                            {task.priority}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-12">
+                    <AlertCircle className="mx-auto text-gray-300 mb-3" size={48} />
+                    <p className="text-gray-400 font-medium">No tasks due today</p>
+                    <p className="text-sm text-gray-400 mt-1">You're all caught up! Great job.</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
         </div>
-
-        {/* Stats Cards */}
-        <motion.section
-          className="grid grid-cols-1 sm:grid-cols-3 gap-6"
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5 }}
-        >
-          <div
-            className="p-6 rounded-3xl shadow hover:scale-105 transition cursor-pointer bg-white/80 backdrop-blur-sm border-l-2 border-l-pink-500 shadow-pink-500/30"
-            style={{ animation: 'liquify-card 4s ease-in-out infinite' }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.boxShadow = '0 0 15px rgba(236, 72, 153, 0.2), 0 0 30px rgba(236, 72, 153, 0.1)';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.boxShadow = '';
-            }}
-          >
-            <h2 className="font-semibold text-pink-400">Today</h2>
-            <p className={`text-4xl font-bold mt-2 text-pink-600 ${todaysTasks.length > 0 ? 'drop-shadow-[0_0_8px_rgba(236,72,153,0.5)]' : ''}`}>
-              {todaysTasks.length}
-            </p>
-            <p className="text-sm text-pink-300">Tasks Remaining</p>
-          </div>
-          <div
-            className="p-6 rounded-3xl shadow hover:scale-105 transition cursor-pointer bg-white/80 backdrop-blur-sm border-l-2 border-l-purple-500 shadow-purple-500/30"
-            style={{ animation: 'liquify-card 4s ease-in-out infinite 0.5s' }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.boxShadow = '0 0 15px rgba(168, 85, 247, 0.2), 0 0 30px rgba(168, 85, 247, 0.1)';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.boxShadow = '';
-            }}
-          >
-            <h2 className="font-semibold text-purple-400">This Week</h2>
-            <p className={`text-4xl font-bold mt-2 text-purple-600 ${weekTasks.length > 3 ? 'drop-shadow-[0_0_12px_rgba(168,85,247,0.6)]' : weekTasks.length > 0 ? 'drop-shadow-[0_0_8px_rgba(168,85,247,0.4)]' : ''}`}>
-              {weekTasks.length}
-            </p>
-            <p className="text-sm text-purple-300">Total Tasks</p>
-          </div>
-          <div
-            className="p-6 rounded-3xl shadow hover:scale-105 transition cursor-pointer bg-white/80 backdrop-blur-sm border-l-2 border-l-blue-500 shadow-blue-500/30"
-            style={{ animation: 'liquify-card 4s ease-in-out infinite 1s' }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.boxShadow = '0 0 15px rgba(59, 130, 246, 0.2), 0 0 30px rgba(59, 130, 246, 0.1)';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.boxShadow = '';
-            }}
-          >
-            <h2 className="font-semibold text-blue-400">This Month</h2>
-            <p className={`text-4xl font-bold mt-2 text-blue-600 ${monthTasks.length > 5 ? 'drop-shadow-[0_0_16px_rgba(59,130,246,0.7)]' : monthTasks.length > 3 ? 'drop-shadow-[0_0_12px_rgba(59,130,246,0.5)]' : monthTasks.length > 0 ? 'drop-shadow-[0_0_8px_rgba(59,130,246,0.3)]' : ''}`}>
-              {monthTasks.length}
-            </p>
-            <p className="text-sm text-blue-300">Planned Tasks</p>
-          </div>
-        </motion.section>
-
-        {/* Upcoming Deadlines with Toggle */}
-        <section
-          className="p-8 rounded-3xl shadow-xl transition bg-pink-50/60 backdrop-blur-md border border-pink-200/40 overflow-hidden relative"
-          style={{ animation: 'liquify-card 5s ease-in-out infinite' }}
-        >
-          <div className="flex justify-between items-center mb-4">
-            {showTodaysDeadlines ? (
-              <>
-                <h2 className="text-2xl font-bold text-gray-800">Today's Deadlines</h2>
-                <Button
-                  onClick={() => setShowTodaysDeadlines(false)}
-                  className="px-3 py-1.5 text-sm bg-pink-500/20 text-pink-700 font-semibold rounded-lg hover:bg-pink-500/30 transition border border-pink-500/30"
-                  style={{ cursor: 'pointer' }}
-                >
-                  Upcoming Deadlines
-                </Button>
-              </>
-            ) : (
-              <>
-                <h2 className="text-2xl font-bold text-gray-800">Upcoming Deadlines</h2>
-                <Button
-                  onClick={() => setShowTodaysDeadlines(true)}
-                  className="px-4 py-2 bg-pink-500/20 text-pink-700 font-semibold rounded-xl hover:bg-pink-500/30 transition border border-pink-500/30"
-                  style={{ cursor: 'pointer' }}
-                >
-                  Today's Deadlines
-                </Button>
-              </>
-            )}
-          </div>
-          <AnimatePresence mode="wait">
-            {showTodaysDeadlines ? (
-              <motion.div
-                key="todays"
-                initial={{ x: '100%', opacity: 0 }}
-                animate={{ x: 0, opacity: 1 }}
-                exit={{ x: '-100%', opacity: 0 }}
-                transition={{ duration: 0.4, ease: 'easeInOut' }}
-                className="space-y-3"
-              >
-                {todaysTasks.length > 0 ? (
-                  todaysTasks.map((task, index) => {
-                    const borderColors = [
-                      'border-l-pink-500',
-                      'border-l-purple-500',
-                      'border-l-blue-500',
-                      'border-l-indigo-500',
-                      'border-l-cyan-500'
-                    ];
-                    return (
-                      <div
-                        key={index}
-                        className={`p-4 rounded-xl flex justify-between items-center bg-white/60 backdrop-blur-sm border-l-4 ${borderColors[index % borderColors.length]} hover:shadow-lg hover:scale-105 transition cursor-pointer`}
-                        style={{ animation: 'liquify-card 3s ease-in-out infinite' }}
-                      >
-                        <div>
-                          <p className="font-semibold text-foreground">
-                            {task.name || 'Untitled Task'}
-                          </p>
-                          <p className="text-sm text-muted-foreground">
-                            {task.description || 'No description'}
-                          </p>
-                        </div>
-                        <div className="text-right flex items-center gap-3">
-                          <p className="text-sm font-medium text-foreground">
-                            {new Date(task.date).toLocaleDateString('en-US', {
-                              month: 'short',
-                              day: 'numeric',
-                              year: 'numeric'
-                            })}
-                          </p>
-                          {task.priority && (
-                            <span className={`text-xs px-3 py-1 rounded-full font-semibold backdrop-blur-md ${
-                              task.priority === 'high' ? 'bg-red-500/20 text-red-700 border border-red-500/30 shadow-lg shadow-red-500/20' :
-                              task.priority === 'medium' ? 'bg-amber-500/20 text-amber-700 border border-amber-500/30 shadow-lg shadow-amber-500/20' :
-                              'bg-green-500/20 text-green-700 border border-green-500/30 shadow-lg shadow-green-500/20'
-                            }`}>
-                              {task.priority}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })
-                ) : (
-                  <div className="text-center py-8">
-                    <p className="text-muted-foreground">No tasks due today</p>
-                  </div>
-                )}
-              </motion.div>
-            ) : (
-              <motion.div
-                key="upcoming"
-                initial={{ x: '-100%', opacity: 0 }}
-                animate={{ x: 0, opacity: 1 }}
-                exit={{ x: '100%', opacity: 0 }}
-                transition={{ duration: 0.4, ease: 'easeInOut' }}
-                className="space-y-3"
-              >
-                {upcomingDeadlines.length > 0 ? (
-                  upcomingDeadlines.map((task, index) => {
-                    const borderColors = [
-                      'border-l-pink-500',
-                      'border-l-purple-500',
-                      'border-l-blue-500',
-                      'border-l-indigo-500',
-                      'border-l-cyan-500'
-                    ];
-                    return (
-                      <div
-                        key={index}
-                        className={`p-4 rounded-xl flex justify-between items-center bg-white/60 backdrop-blur-sm border-l-4 ${borderColors[index % borderColors.length]} hover:shadow-lg hover:scale-105 transition cursor-pointer`}
-                        style={{ animation: 'liquify-card 3s ease-in-out infinite' }}
-                      >
-                        <div>
-                          <p className="font-semibold text-foreground">
-                            {task.name || 'Untitled Task'}
-                          </p>
-                          <p className="text-sm text-muted-foreground">
-                            {task.description || 'No description'}
-                          </p>
-                        </div>
-                        <div className="text-right flex items-center gap-3">
-                          <p className="text-sm font-medium text-foreground">
-                            {new Date(task.date).toLocaleDateString('en-US', {
-                              month: 'short',
-                              day: 'numeric',
-                              year: 'numeric'
-                            })}
-                          </p>
-                          {task.priority && (
-                            <span className={`text-xs px-3 py-1 rounded-full font-semibold backdrop-blur-md ${
-                              task.priority === 'high' ? 'bg-red-500/20 text-red-700 border border-red-500/30 shadow-lg shadow-red-500/20' :
-                              task.priority === 'medium' ? 'bg-amber-500/20 text-amber-700 border border-amber-500/30 shadow-lg shadow-amber-500/20' :
-                              'bg-green-500/20 text-green-700 border border-green-500/30 shadow-lg shadow-green-500/20'
-                            }`}>
-                              {task.priority}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })
-                ) : (
-                  <div className="text-center py-8">
-                    <p className="text-muted-foreground">No upcoming deadlines</p>
-                  </div>
-                )}
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </section>
-
-
       </main>
 
       {/* Modals */}

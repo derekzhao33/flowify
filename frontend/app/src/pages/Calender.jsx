@@ -13,10 +13,10 @@ import AddTaskModal from "../components/AddTaskModal";
 import TaskDetailsModal from "../components/TaskDetailsModal";
 import Sidebar, { useSidebar } from "../components/Sidebar";
 
-const PRIMARY_BG = "#F7F8FC";
-const PRIMARY_DARK = "#355C7D";
-const PRIMARY_LIGHT = "#FFFFFF";
-const BORDER_COLOR = "#E8E0EB";
+const PRIMARY_BG = "#f8f9fa";
+const PRIMARY_DARK = "#495057";
+const PRIMARY_LIGHT = "#ffffff";
+const BORDER_COLOR = "#dee2e6";
 const TIME_START = 0; // midnight
 const TIME_END = 24; // 24 hours
 const TIME_INTERVAL = 1; // 1 hour
@@ -24,12 +24,12 @@ const TIME_INTERVAL = 1; // 1 hour
 const VIEW_OPTIONS = ["Day", "Week", "Month"];
 
 const PASTEL_COLORS = {
-  red: "#FFB3BA",
-  blue: "#BAE1FF",
-  yellow: "#FFFFBA",
-  orange: "#FFDFBA",
-  green: "#BAFFC9",
-  purple: "#E0BBE4",
+  red: "#f8d7da",
+  blue: "#cfe2ff",
+  yellow: "#fff3cd",
+  orange: "#ffe5d0",
+  green: "#d1e7dd",
+  purple: "#e2d9f3",
 };
 
 // Add CSS animation keyframes
@@ -417,9 +417,9 @@ export default function Calender() {
               const dayEvents = getTimeline(allEvents, day);
               const dayTasks = getTasksForDay(tasks, day);
               return (
-                <div key={dayIdx} className="relative border-l flex flex-col h-full rounded-3xl" style={{minWidth: 120, flex: 1, background: '#f3f4f6', border: '1px solid #e5e7eb', boxShadow: '0 0 30px rgba(168, 85, 247, 0.15), inset 0 0 20px rgba(255,255,255,0.3)', backdropFilter: 'blur(10px) saturate(150%)', animation: 'liquify-week 5s ease-in-out infinite'}}>
+                <div key={dayIdx} className="relative border-l flex flex-col h-full rounded-3xl" style={{minWidth: 120, flex: 1, background: '#f8f9fa', border: '1px solid #dee2e6', boxShadow: '0 2px 8px rgba(0, 0, 0, 0.08)', backdropFilter: 'blur(10px) saturate(150%)', animation: 'liquify-week 5s ease-in-out infinite'}}>
                   {/* Day header */}
-                  <div className="sticky top-0 z-10 rounded-t-3xl p-2 text-center font-bold border-b flex items-center justify-center" style={{height: 40, color: '#A855F7', background: 'rgba(200,180,240,0.05)', borderBottomColor: '#e5e7eb', textShadow: '0 0 20px rgba(168, 85, 247, 0.6), 0 0 40px rgba(168, 85, 247, 0.3)'}}>{format(day, "EEE d")}</div>
+                  <div className="sticky top-0 z-10 rounded-t-3xl p-2 text-center font-bold border-b flex items-center justify-center" style={{height: 40, color: '#495057', background: '#e9ecef', borderBottomColor: '#dee2e6', textShadow: 'none'}}>{format(day, "EEE d")}</div>
                   {/* Timeline slots */}
                   <div className="relative h-full flex flex-col">
                     {hours.map(h => (
@@ -438,11 +438,11 @@ export default function Calender() {
                             minHeight: 24,
                             zIndex: 2,
                             overflow: 'visible',
-                            background: isGoogleEvent ? '#fef2f2' : '#fff',
-                            borderColor: isGoogleEvent ? '#fca5a5' : 'rgba(236, 72, 153, 0.4)'
+                            background: isGoogleEvent ? '#fff5f5' : '#fff',
+                            borderColor: isGoogleEvent ? '#fc8181' : '#adb5bd'
                           }}
                         >
-                          <div className={`font-semibold text-xs whitespace-normal break-words ${isGoogleEvent ? 'text-red-600' : 'text-pink-600'}`}>
+                          <div className={`font-semibold text-xs whitespace-normal break-words ${isGoogleEvent ? 'text-red-600' : 'text-gray-700'}`}>
                             {isGoogleEvent && '📅 '}{event.name}
                           </div>
                         </div>
@@ -451,7 +451,7 @@ export default function Calender() {
                     {/* Tasks */}
                     {dayTasks.map((task, i) => {
                       const style = getTaskStyle(task);
-                      const taskColor = dayIdx % 3 === 0 ? '#F9A8D4' : dayIdx % 3 === 1 ? '#C4B5FD' : '#93C5FD';
+                      const taskColor = PASTEL_COLORS[task.color] || PASTEL_COLORS.blue;
                       return (
                         <div
                           key={`task-${i}`}
@@ -461,12 +461,12 @@ export default function Calender() {
                             minHeight: 20,
                             zIndex: 3,
                             backgroundColor: taskColor,
-                            border: `1px solid ${taskColor}`,
+                            border: `1px solid #adb5bd`,
                             overflow: 'hidden'
                           }}
                           onClick={() => openTaskDetailsModal(task, tasks.indexOf(task))}
                         >
-                          <div className="font-semibold text-black text-xs truncate">{task.name}</div>
+                          <div className="font-semibold text-gray-800 text-xs truncate">{task.name}</div>
                         </div>
                       );
                     })}
@@ -504,11 +504,11 @@ export default function Calender() {
                 key={i}
                 className="rounded-3xl p-4 transition-all flex flex-col justify-start"
                 style={{
-                  background: isCurrentMonth ? '#f3f4f6' : '#f9fafb',
-                  border: isToday ? '2px solid #EF4444' : '1px solid #e5e7eb',
+                  background: isCurrentMonth ? '#f8f9fa' : '#e9ecef',
+                  border: isToday ? '2px solid #6c757d' : '1px solid #dee2e6',
                   opacity: isCurrentMonth ? 1 : 0.5,
                   minHeight: 120,
-                  boxShadow: isToday ? '0 0 20px rgba(239, 68, 68, 0.4), 0 0 40px rgba(239, 68, 68, 0.2)' : 'none',
+                  boxShadow: isToday ? '0 4px 12px rgba(108, 117, 125, 0.3)' : '0 2px 4px rgba(0, 0, 0, 0.05)',
                   transition: 'all 0.3s ease',
                   cursor: 'default',
                   animation: isCurrentMonth ? 'liquify-week 6s ease-in-out infinite' : 'none',
@@ -516,18 +516,21 @@ export default function Calender() {
                 }}
                 onMouseEnter={(e) => {
                   if (isCurrentMonth && !isToday) {
-                    e.currentTarget.style.boxShadow = '0 0 25px rgba(59, 130, 246, 0.6), 0 0 40px rgba(59, 130, 246, 0.3)';
-                    e.currentTarget.style.background = '#f0f9ff';
+                    e.currentTarget.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.15)';
+                    e.currentTarget.style.background = '#ffffff';
                   }
                 }}
                 onMouseLeave={(e) => {
                   if (isCurrentMonth && !isToday) {
-                    e.currentTarget.style.boxShadow = 'none';
-                    e.currentTarget.style.background = '#f3f4f6';
+                    e.currentTarget.style.boxShadow = '0 2px 4px rgba(0, 0, 0, 0.05)';
+                    e.currentTarget.style.background = '#f8f9fa';
                   }
                 }}
               >
-                <div className="font-bold mb-2" style={{ color: isToday ? '#EF4444' : '#3B82F6', textShadow: isToday ? '0 0 15px rgba(239, 68, 68, 0.5), 0 0 30px rgba(239, 68, 68, 0.25)' : '0 0 15px rgba(59, 130, 246, 0.5), 0 0 30px rgba(59, 130, 246, 0.25)' }}>{format(d, "d")}</div>
+                <div className="font-bold mb-2" style={{
+                  color: isToday ? '#3B82F6' : '#495057',
+                  textShadow: isToday ? '0 0 20px rgba(59, 130, 246, 0.6), 0 0 40px rgba(59, 130, 246, 0.4)' : 'none'
+                }}>{format(d, "d")}</div>
                 <div className="space-y-1 flex-1">
                   {dayEvents.slice(0, 1).map((e, j) => {
                     const isGoogleEvent = e.source === 'google-calendar';
@@ -536,9 +539,9 @@ export default function Calender() {
                         key={j}
                         className="text-xs rounded px-2 py-1 truncate border"
                         style={{
-                          background: isGoogleEvent ? '#fef2f2' : '#fff',
-                          color: isGoogleEvent ? '#dc2626' : '#db2777',
-                          borderColor: isGoogleEvent ? '#fca5a5' : 'rgba(236, 72, 153, 0.4)'
+                          background: isGoogleEvent ? '#fff5f5' : '#fff',
+                          color: isGoogleEvent ? '#dc2626' : '#495057',
+                          borderColor: isGoogleEvent ? '#fc8181' : '#adb5bd'
                         }}
                       >
                         {isGoogleEvent && '📅 '}{e.name}
@@ -546,11 +549,12 @@ export default function Calender() {
                     );
                   })}
                   {dayTasks.slice(0, 2).map((task, j) => {
+                    const taskColor = PASTEL_COLORS[task.color] || PASTEL_COLORS.blue;
                     return (
                       <div
                         key={`task-${j}`}
-                        className="text-xs rounded px-2 py-1 text-black truncate cursor-pointer hover:scale-105 transition-all"
-                        style={{ backgroundColor: '#e5d4f3', border: '1px solid #d4b8e8' }}
+                        className="text-xs rounded px-2 py-1 text-gray-800 truncate cursor-pointer hover:scale-105 transition-all"
+                        style={{ backgroundColor: taskColor, border: '1px solid #adb5bd' }}
                         onClick={(e) => {
                           e.stopPropagation();
                           openTaskDetailsModal(task, tasks.indexOf(task));
@@ -579,87 +583,103 @@ export default function Calender() {
       <Sidebar />
       <div className={`flex-1 flex flex-col transition-all duration-300 ${isCollapsed ? 'ml-20' : 'ml-64'}`} style={{ height: '100vh', maxHeight: '100vh', overflow: 'hidden' }}>
         {/* Header and View Switcher */}
-        <div className="flex flex-col md:flex-row justify-between items-center p-6 pb-2">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" onClick={handlePrev} style={{ color: view === 'Week' ? '#A855F7' : view === 'Month' ? '#3B82F6' : '#EC4899', fontSize: '1.5rem', cursor: 'pointer' }}>
-            &lt;
-          </Button>
-          <div className="text-2xl font-bold" style={{ color: '#EC4899' }}>
-            {view === "Day" && format(selectedDate, "EEEE, MMM d, yyyy")}
-            {view === "Week" && <span style={{textShadow: '0 0 20px rgba(168, 85, 247, 0.6), 0 0 40px rgba(168, 85, 247, 0.3)', color: '#A855F7'}}>{`Week of ${format(startOfWeek(selectedDate), "MMM d")}`}</span>}
-            {view === "Month" && <span style={{textShadow: '0 0 20px rgba(59, 130, 246, 0.6), 0 0 40px rgba(59, 130, 246, 0.3)', color: '#3B82F6'}}>{format(selectedDate, "MMMM yyyy")}</span>}
+        <div className="flex justify-between items-center p-6 pb-4" style={{ borderBottom: '1px solid #e5e7eb' }}>
+          <div className="flex items-center gap-3">
+            <Button variant="ghost" onClick={handlePrev} style={{ color: '#495057', fontSize: '1.25rem', cursor: 'pointer', padding: '4px 8px' }}>
+              &lt;
+            </Button>
+            <div className="text-xl font-semibold" style={{ color: '#212529', minWidth: '200px' }}>
+              {view === "Day" && format(selectedDate, "MMMM yyyy")}
+              {view === "Week" && format(selectedDate, "MMMM yyyy")}
+              {view === "Month" && format(selectedDate, "MMMM yyyy")}
+            </div>
+            <Button variant="ghost" onClick={handleNext} style={{ color: '#495057', fontSize: '1.25rem', cursor: 'pointer', padding: '4px 8px' }}>
+              &gt;
+            </Button>
           </div>
-          <Button variant="ghost" onClick={handleNext} style={{ color: view === 'Week' ? '#A855F7' : view === 'Month' ? '#3B82F6' : '#EC4899', fontSize: '1.5rem', cursor: 'pointer' }}>
-            &gt;
-          </Button>
-          <Button
-            onClick={openAddTaskModal}
-            className="px-6 py-3 font-semibold rounded-xl shadow-lg hover:shadow-xl hover:scale-105 transition backdrop-blur-md border"
-            style={{
-              background: 'rgba(156, 163, 175, 0.15)',
-              color: '#6B7280',
-              borderColor: 'rgba(156, 163, 175, 0.3)',
-              cursor: 'pointer'
-            }}
-          >
-            + Add Task
-          </Button>
-          {isAuthenticated ? (
+
+          <div className="flex items-center gap-3">
+            <div className="flex gap-0 bg-white rounded-lg border border-gray-200" style={{ padding: '2px' }}>
+              {VIEW_OPTIONS.map((opt, idx) => {
+                const isSelected = view === opt;
+                return (
+                  <Button
+                    key={opt}
+                    style={{
+                      background: isSelected ? '#3B82F6' : 'transparent',
+                      color: isSelected ? '#fff' : '#6b7280',
+                      borderRadius: '6px',
+                      fontWeight: 500,
+                      border: 'none',
+                      padding: '6px 16px',
+                      fontSize: '14px',
+                      boxShadow: 'none',
+                      cursor: 'pointer',
+                      transition: 'all 0.2s'
+                    }}
+                    onClick={() => setView(opt)}
+                  >
+                    {opt}
+                  </Button>
+                );
+              })}
+            </div>
+
             <Button
-              onClick={handleSyncGoogleCalendar}
-              disabled={googleLoading}
-              className="px-6 py-3 font-semibold rounded-xl shadow-lg hover:shadow-xl hover:scale-105 transition backdrop-blur-md border flex items-center gap-2"
+              onClick={openAddTaskModal}
+              className="font-medium border"
               style={{
-                background: 'rgba(234, 67, 53, 0.15)',
-                color: '#EA4335',
-                borderColor: 'rgba(234, 67, 53, 0.3)',
-                cursor: googleLoading ? 'wait' : 'pointer'
+                background: 'white',
+                color: '#374151',
+                borderColor: '#d1d5db',
+                cursor: 'pointer',
+                padding: '6px 16px',
+                fontSize: '14px',
+                borderRadius: '8px'
               }}
             >
-              <RefreshCw className={`h-4 w-4 ${googleLoading ? 'animate-spin' : ''}`} />
-              Sync Google Calendar
+              + Add Task
             </Button>
-          ) : (
-            <Button
-              onClick={connectGoogleCalendar}
-              disabled={googleLoading}
-              className="px-6 py-3 font-semibold rounded-xl shadow-lg hover:shadow-xl hover:scale-105 transition backdrop-blur-md border flex items-center gap-2"
-              style={{
-                background: 'rgba(234, 67, 53, 0.15)',
-                color: '#EA4335',
-                borderColor: 'rgba(234, 67, 53, 0.3)',
-                cursor: 'pointer'
-              }}
-            >
-              <CalendarIcon className="h-4 w-4" />
-              Connect Google Calendar
-            </Button>
-          )}
-        </div>
-        <div className="flex gap-2 mt-4 md:mt-0">
-          {VIEW_OPTIONS.map((opt, idx) => {
-            const colors = ['#EC4899', '#A855F7', '#3B82F6'];
-            const isSelected = view === opt;
-            return (
+
+            {isAuthenticated ? (
               <Button
-                key={opt}
+                onClick={handleSyncGoogleCalendar}
+                disabled={googleLoading}
+                className="font-medium border flex items-center gap-2"
                 style={{
-                  background: isSelected ? colors[idx] : 'rgba(255,255,255,0.6)',
-                  color: isSelected ? '#fff' : colors[idx],
-                  borderRadius: 16,
-                  fontWeight: 600,
-                  border: `2px solid ${colors[idx]}`,
-                  boxShadow: isSelected ? `0 4px 15px ${colors[idx]}40` : 'none',
-                  cursor: 'pointer'
+                  background: 'white',
+                  color: '#374151',
+                  borderColor: '#d1d5db',
+                  cursor: googleLoading ? 'wait' : 'pointer',
+                  padding: '6px 16px',
+                  fontSize: '14px',
+                  borderRadius: '8px'
                 }}
-                onClick={() => setView(opt)}
               >
-                {opt}
+                <RefreshCw className={`h-4 w-4 ${googleLoading ? 'animate-spin' : ''}`} />
+                Sync Google Calendar
               </Button>
-            );
-          })}
+            ) : (
+              <Button
+                onClick={connectGoogleCalendar}
+                disabled={googleLoading}
+                className="font-medium border flex items-center gap-2"
+                style={{
+                  background: 'white',
+                  color: '#374151',
+                  borderColor: '#d1d5db',
+                  cursor: 'pointer',
+                  padding: '6px 16px',
+                  fontSize: '14px',
+                  borderRadius: '8px'
+                }}
+              >
+                <CalendarIcon className="h-4 w-4" />
+                Connect Google Calendar
+              </Button>
+            )}
+          </div>
         </div>
-      </div>
 
       {/* Sync Status Message */}
       {syncMessage && (
@@ -680,7 +700,7 @@ export default function Calender() {
       >
         {view === "Day" && (
           <div className="rounded-3xl shadow-xl p-6 mt-4 flex flex-col flex-1 min-h-0 overflow-hidden" style={{ background: 'transparent', minHeight: 0 }}>
-            <div className="text-xl font-bold mb-4" style={{ color: '#EC4899' }}>Timeline</div>
+            <div className="text-xl font-bold mb-4" style={{ color: '#495057' }}>Timeline</div>
             <div className="flex-1 min-h-0 flex flex-col h-full" style={{ position: 'relative', minHeight: 0, height: 'calc(100vh - 220px)' }}>
               <div className="flex-1 min-h-0 flex flex-col h-full" style={{height: '100%'}}>
                 <div className="flex flex-1 h-full min-h-0 overflow-y-auto" style={{height: '100%'}}>
@@ -714,14 +734,14 @@ export default function Calender() {
                             zIndex: 2,
                             boxShadow: 'none',
                             overflow: 'visible',
-                            borderColor: isGoogleEvent ? '#EA4335' : '#c7d2fe',
-                            background: isGoogleEvent ? '#fef2f2' : '#fff'
+                            borderColor: isGoogleEvent ? '#fc8181' : '#adb5bd',
+                            background: isGoogleEvent ? '#fff5f5' : '#fff'
                           }}
                         >
                           {isGoogleEvent && (
                             <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded">Google</span>
                           )}
-                          <div className="font-semibold text-indigo-900 whitespace-nowrap">{event.name}</div>
+                          <div className="font-semibold text-gray-800 whitespace-nowrap">{event.name}</div>
                           <div className="text-xs text-gray-600 whitespace-normal break-words flex-1">{event.description}</div>
                         </div>
                       );
@@ -807,13 +827,13 @@ export default function Calender() {
             borderRadius: '50px',
             backdropFilter: 'blur(12px)',
             border: '1.5px solid transparent',
-            backgroundImage: 'linear-gradient(rgba(255,255,255,0.95), rgba(255,255,255,0.95)), linear-gradient(90deg, #EC4899, #A855F7, #3B82F6, #10B981, #EC4899)',
+            backgroundImage: 'linear-gradient(rgba(255,255,255,0.95), rgba(255,255,255,0.95)), linear-gradient(90deg, #6c757d, #495057, #6c757d)',
             backgroundOrigin: 'border-box',
             backgroundClip: 'padding-box, border-box',
             margin: '0 auto',
             position: 'relative',
             animation: 'liquify 3s ease-in-out infinite',
-            boxShadow: '0 8px 32px rgba(236, 72, 153, 0.25), 0 0 60px rgba(168, 85, 247, 0.15)',
+            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.08), 0 0 60px rgba(0, 0, 0, 0.05)',
           }}
         >
           {showSuccess && (
@@ -822,33 +842,31 @@ export default function Calender() {
               <span className="text-sm font-medium">Task created</span>
             </div>
           )}
-            <Input
-              className="flex-1 text-lg border-0 focus:ring-0 focus:outline-none bg-transparent"
-              placeholder="Tell me what you need to do... (e.g. 'meeting from 2-4pm', 'study for exam at 6pm for 2 hours')"
-              value={input}
-              onChange={e => setInput(e.target.value)}
-              onKeyDown={handleInputKeyDown}
-              disabled={isProcessing}
-              style={{ color: '#1a1a1a', fontWeight: 500 }}
-            />
-            <Button variant="ghost" style={{ color: '#A855F7', borderRadius: 16 }}>
-              <MicIcon size={24} />
-            </Button>
-            <Button
-              onClick={handleQuickAdd}
-              disabled={!input.trim() || isProcessing}
-              style={{
-                background: input.trim() && !isProcessing ? '#EC4899' : '#9CA3AF',
-                color: '#fff',
-                borderRadius: 16,
-                fontWeight: 600,
-                boxShadow: input.trim() && !isProcessing ? '0 2px 8px 0 rgba(236,72,153,0.18)' : 'none',
-                cursor: input.trim() && !isProcessing ? 'pointer' : 'not-allowed'
-              }}
-            >
-              {isProcessing ? '...' : 'Add'}
-            </Button>
-          </div>
+          <Input
+            className="flex-1 text-lg border-0 focus:ring-0 focus:outline-none bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0"
+            placeholder="Type task details (e.g. 'Meeting from 2pm to 4pm urgent' or 'Workout at 6am [fitness]')"
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            onKeyDown={handleInputKeyDown}
+            style={{ color: '#1a1a1a', fontWeight: 500, boxShadow: 'none' }}
+          />
+          <Button variant="ghost" style={{ color: '#6c757d', borderRadius: 16, cursor: 'pointer' }}>
+            <MicIcon size={24} />
+          </Button>
+          <Button
+            onClick={handleQuickAdd}
+            disabled={!input.trim()}
+            style={{
+              background: input.trim() ? '#6c757d' : '#adb5bd',
+              color: '#fff',
+              borderRadius: 16,
+              fontWeight: 600,
+              boxShadow: input.trim() ? '0 2px 8px rgba(0, 0, 0, 0.2)' : 'none',
+              cursor: input.trim() ? 'pointer' : 'not-allowed'
+            }}
+          >
+            Add
+          </Button>
         </div>
       </div>
 
