@@ -74,7 +74,7 @@ export default function Sidebar() {
       <div className={`flex items-center mb-6 ${isCollapsed ? 'justify-center' : 'justify-between'}`}>
         {!isCollapsed && (
           <h2 className="text-xl font-bold text-purple-800">
-            FlowScheduler
+            Flowify
           </h2>
         )}
         <Button
