@@ -261,6 +261,9 @@ export default function Calender() {
   const [input, setInput] = useState("");
   const [showSuccess, setShowSuccess] = useState(false);
   const [syncMessage, setSyncMessage] = useState("");
+  const [isProcessing, setIsProcessing] = useState(false);
+    const [showAiPanel, setShowAiPanel] = useState(false);
+    const [aiResponse, setAiResponse] = useState(null);
 
   // Check Google Calendar auth status on mount
   useEffect(() => {
@@ -322,7 +325,6 @@ export default function Calender() {
     setIsProcessing(true);
     setShowAiPanel(true);
     setAiResponse(null);
-
     try {
       const response = await fetch('http://localhost:3000/api/assistant/process', {
         method: 'POST',
@@ -820,30 +822,6 @@ export default function Calender() {
               <span className="text-sm font-medium">Task created</span>
             </div>
           )}
-          <Input
-            className="flex-1 text-lg border-0 focus:ring-0 focus:outline-none bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0"
-            placeholder="Type task details (e.g. 'Meeting from 2pm to 4pm urgent' or 'Workout at 6am [fitness]')"
-            value={input}
-            onChange={e => setInput(e.target.value)}
-            onKeyDown={handleInputKeyDown}
-            style={{ color: '#1a1a1a', fontWeight: 500, boxShadow: 'none' }}
-          />
-          <Button variant="ghost" style={{ color: '#A855F7', borderRadius: 16, cursor: 'pointer' }}>
-            <MicIcon size={24} />
-          </Button>
-          <Button
-            onClick={handleQuickAdd}
-            disabled={!input.trim()}
-            style={{
-              background: input.trim() ? '#3B82F6' : '#9CA3AF',
-              color: '#fff',
-              borderRadius: 16,
-              fontWeight: 600,
-              boxShadow: input.trim() ? '0 0 20px rgba(59, 130, 246, 0.6), 0 0 40px rgba(59, 130, 246, 0.3)' : 'none',
-              cursor: input.trim() ? 'pointer' : 'not-allowed'
-            }}
-          >
-            </Button>
             <Input
               className="flex-1 text-lg border-0 focus:ring-0 focus:outline-none bg-transparent"
               placeholder="Tell me what you need to do... (e.g. 'meeting from 2-4pm', 'study for exam at 6pm for 2 hours')"
@@ -877,6 +855,6 @@ export default function Calender() {
         {/* Modals */}
         <AddTaskModal />
         <TaskDetailsModal />
-      </div>
+    </div>
   );
 }
