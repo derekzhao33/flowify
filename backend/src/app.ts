@@ -10,6 +10,8 @@ dotenv.config();
 import googleCalendarRoutes from './services/google-calendar/google-calendar.routes.js';
 import { errorHandler } from './middlewares/errorHandler.js';
 
+import assistantRoutes from './services/assistant/assistant.routes.js'
+
 const app = express();
 
 // Enable CORS for frontend
@@ -32,6 +34,8 @@ app.use(express.json());
 
 // Google Calendar routes (works without database)
 app.use('/api/google-calendar', googleCalendarRoutes);
+
+app.use('/api/assistant', assistantRoutes);
 
 // Global error handler (should be after routes)
 app.use(errorHandler);

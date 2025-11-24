@@ -70,7 +70,7 @@ export default function Sidebar() {
         isCollapsed ? 'w-20' : 'w-64'
       } p-6 shadow-xl hidden md:flex flex-col transition-all duration-300 bg-gradient-to-b from-purple-100 to-blue-100 fixed left-0 top-0 h-screen z-50`}
     >
-      {/* Header with collapse button */}
+      {/* Header with collapse button */} 
       <div className={`flex items-center mb-6 ${isCollapsed ? 'justify-center' : 'justify-between'}`}>
         {!isCollapsed && (
           <h2 className="text-xl font-bold text-purple-800">
