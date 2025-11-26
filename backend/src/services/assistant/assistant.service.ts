@@ -3,6 +3,7 @@ import config from '../../config/config.js';
 import prisma from '../../shared/prisma.js';
 import { format, addDays, parseISO } from 'date-fns';
 import { formatInTimeZone, toZonedTime } from 'date-fns-tz';
+import { createTask, deleteTask } from '../tasks/task.service.js';
 
 const anthropic = new Anthropic({
   apiKey: config.claudeApiKey,
@@ -1545,9 +1546,16 @@ RULES:
           continue;
         }
 
+        // Save task to database using task service (which handles Google Calendar sync)
+        const dbTask = await createTask(startDateTime, endDateTime, userId, {
+          name: task.name,
+          priority: task.priority as 'low' | 'medium' | 'high',
+          description: task.description
+        });
+
         // Save task to in-memory storage
-        const dbTask: DbTask = {
-          id: Date.now() + tasksCreated,
+        const memoryTask: DbTask = {
+          id: dbTask.id,
           start_time: startDateTime,
           end_time: endDateTime,
           user_id: userId,
@@ -1560,7 +1568,7 @@ RULES:
         if (!taskStorage.has(userId)) {
           taskStorage.set(userId, []);
         }
-        taskStorage.get(userId)!.push(dbTask);
+        taskStorage.get(userId)!.push(memoryTask);
         
         tasksCreated++;
         createdTasks.push(task);

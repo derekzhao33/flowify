@@ -10,9 +10,14 @@ import {
 const router: Router = Router();
 
 router.post('/', async (req: express.Request, res: express.Response) => {
-    const { start_time, end_time, user_id }: Task = req.body;
+    const { start_time, end_time, user_id, name, description, priority, color }: Task = req.body;
     try {
-        const task: Task = await createTask(new Date(start_time), new Date(end_time), user_id);
+        const task: Task = await createTask(
+            new Date(start_time),
+            new Date(end_time),
+            user_id,
+            { name, description, priority, color }
+        );
         res.status(201).json(JSON.stringify(task));
     } catch (error) {
         res.status(400).json({ error: '400: Bad Request' });
