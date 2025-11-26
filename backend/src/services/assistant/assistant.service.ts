@@ -62,6 +62,97 @@ async function getUserTasks(userId: number): Promise<DbTask[]> {
   return taskStorage.get(userId) || [];
 }
 
+// Check for new Canvas events and generate notifications
+async function checkCanvasEventsNotification(userId: number): Promise<string[]> {
+  try {
+    // Get user to check if Canvas is connected
+    const user = await prisma.user.findUnique({
+      where: { id: userId }
+    });
+
+    if (!user || !user.canvas_ics_url) {
+      return []; // No Canvas integration
+    }
+
+    // Get Canvas tasks (tasks with canvas_event_id)
+    const canvasTasks = await prisma.task.findMany({
+      where: {
+        user_id: userId,
+        canvas_event_id: { not: null }
+      },
+      orderBy: { start_time: 'asc' }
+    });
+
+    if (canvasTasks.length === 0) {
+      return [];
+    }
+
+    const notifications: string[] = [];
+    const now = new Date();
+    const sevenDaysFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+
+    for (const task of canvasTasks) {
+      const dueDate = new Date(task.end_time);
+      
+      // Only notify about upcoming tasks (within next 7 days)
+      if (dueDate > now && dueDate <= sevenDaysFromNow) {
+        const daysUntilDue = Math.ceil((dueDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+        const dueDateFormatted = format(dueDate, 'MMM d');
+        const dueTimeFormatted = format(dueDate, 'h:mm a');
+        
+        let urgencyPrefix = '';
+        if (daysUntilDue === 0) {
+          urgencyPrefix = '🔴 URGENT: ';
+        } else if (daysUntilDue === 1) {
+          urgencyPrefix = '⚠️ Tomorrow: ';
+        } else if (daysUntilDue <= 3) {
+          urgencyPrefix = '📅 Upcoming: ';
+        }
+
+        notifications.push(
+          `${urgencyPrefix}Canvas Assignment: "${task.name}" is due on ${dueDateFormatted} at ${dueTimeFormatted} (${daysUntilDue} days). ` +
+          `I can help you schedule focused work time for it!`
+        );
+      }
+    }
+
+    return notifications;
+  } catch (error) {
+    console.error('Error checking Canvas events:', error);
+    return [];
+  }
+}
+
+// Get Canvas tasks for context
+async function getCanvasTasks(userId: number): Promise<Array<{
+  name: string;
+  dueDate: Date;
+  daysUntilDue: number;
+  subject?: string;
+}>> {
+  try {
+    const canvasTasks = await prisma.task.findMany({
+      where: {
+        user_id: userId,
+        canvas_event_id: { not: null },
+        end_time: { gte: new Date() } // Only future tasks
+      },
+      orderBy: { end_time: 'asc' }
+    });
+
+    const now = new Date();
+    return canvasTasks.map(task => ({
+      name: task.name || 'Untitled Assignment',
+      dueDate: new Date(task.end_time),
+      daysUntilDue: Math.ceil((new Date(task.end_time).getTime() - now.getTime()) / (1000 * 60 * 60 * 24)),
+      subject: task.description || undefined
+    }));
+  } catch (error) {
+    console.error('Error fetching Canvas tasks:', error);
+    return [];
+  }
+}
+
 // Analyze patterns from existing tasks
 function analyzeTaskPatterns(tasks: DbTask[]): {
   averageDuration: number;
@@ -311,6 +402,12 @@ export async function processNaturalLanguageInput(
   googleCalendarEvents?: Array<any>
 ): Promise<AIResponse> {
   try {
+    // Check for Canvas event notifications
+    const canvasNotifications = await checkCanvasEventsNotification(userId);
+    
+    // Get Canvas tasks for context
+    const canvasTasks = await getCanvasTasks(userId);
+    
     // Get user's existing tasks for context and pattern analysis
     const existingTasks = await getUserTasks(userId);
     const patterns = analyzeTaskPatterns(existingTasks);
@@ -345,6 +442,16 @@ export async function processNaturalLanguageInput(
         }).join('\n')
       : null;
 
+    // Format Canvas tasks for Claude to see
+    const canvasTasksInfo = (canvasTasks && canvasTasks.length > 0)
+      ? canvasTasks.map(task => {
+          const dueDateFormatted = format(task.dueDate, 'MMM d, yyyy');
+          const dueTimeFormatted = format(task.dueDate, 'h:mm a');
+          const urgencyEmoji = task.daysUntilDue === 0 ? '🔴' : task.daysUntilDue === 1 ? '⚠️' : task.daysUntilDue <= 3 ? '📅' : '';
+          return `  ${urgencyEmoji} "${task.name}" due on ${dueDateFormatted} at ${dueTimeFormatted} (in ${task.daysUntilDue} days) [CANVAS ASSIGNMENT - CANNOT MOVE]`;
+        }).join('\n')
+      : null;
+
     // Comprehensive system prompt for Claude
     const systemPrompt = `You are an expert task scheduling AI assistant. Your job is to extract task information from natural language and help users schedule events intelligently.
 
@@ -364,6 +471,54 @@ ${googleEventsInfo ? `GOOGLE CALENDAR EVENTS (EXTERNAL - CANNOT BE MOVED):
 ${googleEventsInfo}
 
 🚨 CRITICAL: Google Calendar events are EXTERNAL commitments and CANNOT be rescheduled or overridden under ANY circumstances. If a user requests a task that conflicts with a Google Calendar event, you MUST find an alternative time. Never suggest moving or deleting Google Calendar events.
+` : ''}
+
+${canvasTasksInfo ? `CANVAS ASSIGNMENTS (DEADLINES - CANNOT BE MOVED):
+${canvasTasksInfo}
+
+📚 CANVAS ASSIGNMENT INTELLIGENCE:
+Canvas assignments have FIXED DEADLINES that cannot be moved. Your job is to help the user prepare for these deadlines by:
+
+1. **Proactive Work Scheduling**: When you see a Canvas assignment approaching, suggest scheduling dedicated study/work time BEFORE the deadline
+   - For assignments due in 2-3 days: Suggest 1-2 work sessions
+   - For assignments due in 4-7 days: Suggest 2-3 work sessions spread out
+   - For assignments due in 1 day: Suggest an urgent work session TODAY
+
+2. **Smart Time Blocking**: 
+   - NEVER schedule unrelated tasks in the 1 hour BEFORE a Canvas assignment is due
+   - This hour should be reserved for:
+     * Final review/submission time
+     * OR working on the assignment itself
+   - If user tries to schedule something at that time, warn them and suggest an alternative
+
+3. **Assignment Preparation Examples**:
+   
+   Example 1: Math assignment due in 2 days
+   User: "I have a math assignment due Thursday at 11:59pm"
+   AI: "I see you have a Canvas math assignment due Thursday at 11:59 PM. That's in 2 days! I recommend scheduling focused work time for it. How about:\n- Tomorrow (Wed) 2:00-4:00 PM: Math assignment work (2 hours)\n- Thursday 6:00-8:00 PM: Final review and submission prep (2 hours)\nThis gives you time to work through problems and review before the deadline. Sound good?"
+   
+   Example 2: User tries to schedule near deadline
+   User: "Schedule a gaming session Thursday 11-11:30pm"
+   Canvas: Math assignment due Thursday 11:59pm
+   AI: "Heads up! Your Canvas math assignment is due Thursday at 11:59 PM. Scheduling gaming at 11-11:30 PM leaves you only 30 minutes before the deadline. That's cutting it really close! 😰\n\nI'd suggest either:\n1. Schedule gaming AFTER you submit (say, Friday morning)\n2. Keep the 10-11:59 PM window open for final review and submission\n3. Move gaming to earlier Thursday evening (like 8-9 PM)\n\nWhat works better?"
+   
+   Example 3: Asking about assignments
+   User: "What assignments do I have coming up?"
+   AI: "Here are your upcoming Canvas assignments:\n🔴 Math Problem Set - Due TODAY at 11:59 PM (urgent!)\n⚠️ History Essay - Due tomorrow at 11:59 PM\n📅 Chemistry Lab Report - Due in 3 days (Nov 29)\n\nWould you like me to schedule work time for any of these?"
+
+4. **Deadline Protection Rules**:
+   - Canvas assignment due time = BLOCKED TIME (treat like immovable Google Calendar event)
+   - 1 hour before due time = PROTECTED TIME (only for assignment work or kept free)
+   - If user wants to schedule something during protected time, ask: "Would you like to use this time to work on [assignment name] or keep it free for submission?"
+
+5. **Automatic Work Session Suggestions**:
+   When a Canvas assignment is mentioned or approaching:
+   - Estimate work needed (default: 2-4 hours for assignments)
+   - Break it into manageable sessions (1-2 hours each)
+   - Schedule sessions on different days if deadline is >2 days away
+   - Ask user to confirm the work schedule
+
+🎯 CRITICAL: Treat Canvas assignment deadlines with the SAME respect as Google Calendar events - they CANNOT be moved. Your job is to help the user work AROUND them, not move them!
 ` : ''}
 
 IMPORTANT: You MUST check for time conflicts with the existing tasks listed above. DO NOT create overlapping tasks at the same time. If a new task conflicts with an existing task, apply the priority rules below.
@@ -1581,6 +1736,13 @@ RULES:
 
     // Build response
     let message = parsedResponse.message || '';
+    
+    // Prepend Canvas notifications if user isn't actively handling tasks
+    if (canvasNotifications.length > 0 && tasksCreated === 0 && tasksDeleted === 0 && conflicts.length === 0) {
+      const canvasMessage = canvasNotifications.join('\n\n');
+      message = message ? `${canvasMessage}\n\n${message}` : canvasMessage;
+    }
+    
     if (missingInfo.length > 0 && tasksCreated === 0 && tasksDeleted === 0) {
       message = `I need more information: ${missingInfo.join(', ')}.`;
     }

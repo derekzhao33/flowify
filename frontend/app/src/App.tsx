@@ -26,9 +26,14 @@ import Assistant from './pages/Assistant.jsx'
 import Login from './pages/auth/Login.jsx'
 // @ts-ignore
 import SignUp from './pages/auth/SignUp.jsx'
+// @ts-ignore
+import { useCanvasSync } from './hooks/useCanvasSync.js'
 
 function AppContent() {
   const { isAuthenticated, loading } = useAuth();
+  
+  // Initialize Canvas sync
+  useCanvasSync();
 
   if (loading) {
     return (
