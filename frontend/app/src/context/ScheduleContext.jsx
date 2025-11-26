@@ -20,12 +20,20 @@ export function ScheduleProvider({ children }) {
 
   const fetchTasks = async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/tasks?user_id=${user.id}`);
+      console.log('Fetching tasks for user:', user.id);
+      const response = await fetch(`${API_BASE_URL}/tasks?userId=${user.id}`);
       if (response.ok) {
         const data = await response.json();
+        console.log('Fetched tasks from backend:', data);
+        // The API returns { tasks: [...] }, not just [...]
+        const taskList = data.tasks || data;
+        console.log('Task list:', taskList.length, 'tasks');
         // Transform backend format to frontend format
-        const transformedTasks = data.map(task => transformTaskFromBackend(task));
+        const transformedTasks = taskList.map(task => transformTaskFromBackend(task));
+        console.log('Transformed tasks:', transformedTasks);
         setTasks(transformedTasks);
+      } else {
+        console.error('Failed to fetch tasks, status:', response.status);
       }
     } catch (error) {
       console.error("Error fetching tasks:", error);
@@ -176,7 +184,7 @@ export function ScheduleProvider({ children }) {
 
   // Merge local events and Google Calendar events
   const getAllEvents = () => {
-    return [...events, ...googleCalendarEvents];
+    return [...tasks, ...events, ...googleCalendarEvents];
   };
 
   return (
