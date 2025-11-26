@@ -323,7 +323,7 @@ export default function Assistant() {
       const errorMessage = {
         id: Date.now() + 1,
         type: "assistant",
-        content: `Failed to fetch response from the assistant. Please make sure the backend server is running on port 3000. Error: ${error.message}`,
+        content: `Failed to fetch response from the assistant. Please make sure the backend server is running on port 3001. Error: ${error.message}`,
         timestamp: new Date().toISOString(),
       };
       
