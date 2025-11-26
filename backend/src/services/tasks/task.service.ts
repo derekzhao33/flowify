@@ -159,14 +159,20 @@ export async function createTask(
     start_time: Date,
     end_time: Date,
     user_id: number,
-    additionalData?: Partial<Pick<Task, 'name' | 'description' | 'priority' | 'color'>>
+    name?: string,
+    description?: string,
+    priority?: string,
+    color?: string
 ): Promise<Task> {
     const task = await prisma.task.create({
-        data: {
-            start_time,
-            end_time,
+        data: { 
+            start_time, 
+            end_time, 
             user_id,
-            ...additionalData
+            name,
+            description,
+            priority,
+            color
         }
     });
 

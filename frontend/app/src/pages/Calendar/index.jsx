@@ -25,7 +25,7 @@ if (typeof document !== 'undefined') {
 }
 
 export default function Calendar() {
-  const { events, tasks, addTask, deleteTask, completeTask, syncGoogleCalendarEvents, getAllEvents, googleCalendarEvents } = useSchedule();
+  const { events, tasks, addTask, deleteTask, completeTask, syncGoogleCalendarEvents, getAllEvents, fetchTasks, googleCalendarEvents } = useSchedule();
   const { openAddTaskModal, openTaskDetailsModal } = useModal();
   const { theme } = useThemeSettings();
   const { isCollapsed } = useSidebar();
@@ -272,30 +272,11 @@ export default function Calendar() {
         });
       }
 
-      // Add created tasks to calendar
+      // Tasks are already created in the database by the AI assistant
+      // Just fetch the updated task list
       if (data.tasks && data.tasks.length > 0) {
-        data.tasks.forEach(task => {
-          const frontendTask = {
-            name: task.name,
-            description: task.description || '',
-            date: task.date,
-            startTime: task.startTime,
-            endTime: task.endTime,
-            priority: task.priority || 'medium',
-            color: task.colour || 'blue',
-            label: task.label || '',
-          };
-
-          // Check if task has recurrence pattern
-          if (task.recurrence && task.recurrence.length > 0) {
-            // Expand recurring task into multiple instances
-            const recurringInstances = expandRecurringTask(frontendTask, task.recurrence);
-            recurringInstances.forEach(instance => addTask(instance));
-          } else {
-            // Add single task
-            addTask(frontendTask);
-          }
-        });
+        // Refresh tasks from the backend without full page reload
+        await fetchTasks();
 
         // Show success notification
         setShowSuccess(true);

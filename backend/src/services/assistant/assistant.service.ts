@@ -2,7 +2,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import config from '../../config/config.js';
 import prisma from '../../shared/prisma.js';
 import { format, addDays, parseISO } from 'date-fns';
-import { formatInTimeZone, toZonedTime } from 'date-fns-tz';
+import { formatInTimeZone, toZonedTime, fromZonedTime } from 'date-fns-tz';
 import { createTask, deleteTask } from '../tasks/task.service.js';
 
 const anthropic = new Anthropic({
@@ -53,13 +53,28 @@ interface DbTask {
   template?: string; // Template name if task is from a template
 }
 
-// In-memory task storage for current session
-const taskStorage: Map<number, DbTask[]> = new Map();
-
-// Get user's existing tasks for pattern analysis
+// Get user's existing tasks for pattern analysis from database
 async function getUserTasks(userId: number): Promise<DbTask[]> {
-  // Return in-memory tasks for this user
-  return taskStorage.get(userId) || [];
+  try {
+    const tasks = await prisma.task.findMany({
+      where: { user_id: userId },
+      orderBy: { start_time: 'asc' }
+    });
+    
+    return tasks.map(task => ({
+      id: task.id,
+      start_time: task.start_time,
+      end_time: task.end_time,
+      user_id: task.user_id,
+      name: task.name || undefined,
+      priority: (task.priority as 'low' | 'medium' | 'high') || undefined,
+      recurrence: undefined, // TODO: Add recurrence support
+      isRecurring: false
+    }));
+  } catch (error) {
+    console.error('Error fetching user tasks:', error);
+    return [];
+  }
 }
 
 // Check for new Canvas events and generate notifications
@@ -1657,78 +1672,73 @@ RULES:
       validTasks.push(task);
     }
 
-    // Handle task deletions
+    // Handle task deletions from database
     let tasksDeleted = 0;
     const deletedTaskNames: string[] = [];
     if (parsedResponse.tasksToDelete && Array.isArray(parsedResponse.tasksToDelete)) {
-      const userTasks = taskStorage.get(userId) || [];
-      
       for (const taskNameToDelete of parsedResponse.tasksToDelete) {
-        // Find matching task (case-insensitive)
-        const taskIndex = userTasks.findIndex(t => 
-          t.name?.toLowerCase() === taskNameToDelete.toLowerCase()
-        );
-        
-        if (taskIndex !== -1) {
-          const [deletedTask] = userTasks.splice(taskIndex, 1);
-          if (deletedTask) {
-            deletedTaskNames.push(deletedTask.name || 'Untitled');
+        try {
+          // Find matching task in database (case-insensitive)
+          const taskToDelete = await prisma.task.findFirst({
+            where: { 
+              user_id: userId,
+              name: {
+                equals: taskNameToDelete,
+                mode: 'insensitive'
+              }
+            }
+          });
+          
+          if (taskToDelete) {
+            await prisma.task.delete({
+              where: { id: taskToDelete.id }
+            });
+            deletedTaskNames.push(taskToDelete.name || 'Untitled');
             tasksDeleted++;
-            console.log(`Task deleted: ${deletedTask.name} at ${format(new Date(deletedTask.start_time), 'yyyy-MM-dd HH:mm')}`);
           }
-        } else {
-          console.log(`Task not found for deletion: ${taskNameToDelete}`);
+        } catch (error) {
+          console.error(`Error deleting task "${taskNameToDelete}":`, error);
         }
-      }
-      
-      // Update storage
-      if (tasksDeleted > 0) {
-        taskStorage.set(userId, userTasks);
       }
     }
 
-    // Create tasks in database (always create valid tasks)
+    // Deduplicate tasks before creating (same name, date, and time)
+    const uniqueTasks = validTasks.filter((task, index, self) => 
+      index === self.findIndex(t => 
+        t.name === task.name && 
+        t.date === task.date && 
+        t.startTime === task.startTime &&
+        t.endTime === task.endTime
+      )
+    );
+
+    // Create tasks in database
     let tasksCreated = 0;
     const createdTasks = [];
-    for (const task of validTasks) {
+    
+    for (const task of uniqueTasks) {
       try {
-        const startDateTime = new Date(`${task.date}T${task.startTime}`);
-        const endDateTime = new Date(`${task.date}T${task.endTime}`);
+        const startDateTime = new Date(`${task.date}T${task.startTime}:00-08:00`);
+        const endDateTime = new Date(`${task.date}T${task.endTime}:00-08:00`);
 
-        // Validate dates
         if (isNaN(startDateTime.getTime()) || isNaN(endDateTime.getTime())) {
           console.error('Invalid date format:', { date: task.date, startTime: task.startTime, endTime: task.endTime });
           continue;
         }
 
         // Save task to database using task service (which handles Google Calendar sync)
-        const dbTask = await createTask(startDateTime, endDateTime, userId, {
-          name: task.name,
-          priority: task.priority as 'low' | 'medium' | 'high',
-          description: task.description
-        });
-
-        // Save task to in-memory storage
-        const memoryTask: DbTask = {
-          id: dbTask.id,
-          start_time: startDateTime,
-          end_time: endDateTime,
-          user_id: userId,
-          name: task.name,
-          priority: task.priority as 'low' | 'medium' | 'high',
-          recurrence: task.recurrence,
-          isRecurring: !!(task.recurrence && task.recurrence.length > 0)
-        };
-        
-        if (!taskStorage.has(userId)) {
-          taskStorage.set(userId, []);
-        }
-        taskStorage.get(userId)!.push(memoryTask);
+        await createTask(
+          startDateTime,
+          endDateTime,
+          userId,
+          task.name,
+          task.description || task.label,
+          task.priority || 'medium',
+          task.colour
+        );
         
         tasksCreated++;
         createdTasks.push(task);
-        const recurInfo = task.recurrence ? ` (Recurring: ${task.recurrence.join(', ')})` : '';
-        console.log(`Task created: ${task.name} at ${task.date} ${task.startTime}-${task.endTime} (priority: ${task.priority})${recurInfo}`);
       } catch (error) {
         console.error('Error creating task:', error);
       }
