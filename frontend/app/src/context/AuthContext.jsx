@@ -1,5 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 
+const API_BASE_URL = 'http://localhost:3001/api';
+
 const AuthContext = createContext();
 
 export const AuthProvider = ({ children }) => {
@@ -30,18 +32,31 @@ export const AuthProvider = ({ children }) => {
     setError(null);
     setLoading(true);
     try {
-      // For now, accept any login without database
-      // In production, this would verify against backend
       if (!email || !password) {
         throw new Error('Email and password are required');
       }
 
-      const userData = { 
-        email, 
-        password,
-        id: Date.now(),
-        first_name: email.split('@')[0],
-        last_name: 'User'
+      // Call backend API
+      const response = await fetch(`${API_BASE_URL}/users/login`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email, password }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Login failed');
+      }
+
+      // Store user data and token
+      const userData = {
+        id: data.id,
+        email: data.email,
+        first_name: data.first_name,
+        last_name: data.last_name,
       };
       
       localStorage.setItem('user', JSON.stringify(userData));
@@ -63,18 +78,36 @@ export const AuthProvider = ({ children }) => {
     setError(null);
     setLoading(true);
     try {
-      // For now, store user in localStorage without database
-      // In production, this would create user in backend database
       if (!firstName || !lastName || !email || !password) {
         throw new Error('All fields are required');
       }
 
-      const userData = { 
-        id: Date.now(),
-        email,
-        password,
-        first_name: firstName,
-        last_name: lastName,
+      // Call backend API to create user
+      const response = await fetch(`${API_BASE_URL}/users`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          first_name: firstName,
+          last_name: lastName,
+          email,
+          password,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Signup failed');
+      }
+
+      // After successful signup, automatically log the user in
+      const userData = {
+        id: data.id,
+        email: data.email,
+        first_name: data.first_name,
+        last_name: data.last_name,
       };
       
       localStorage.setItem('user', JSON.stringify(userData));
@@ -95,11 +128,34 @@ export const AuthProvider = ({ children }) => {
   const updateProfile = async (firstName, lastName, email) => {
     setError(null);
     try {
+      if (!user) {
+        throw new Error('No user logged in');
+      }
+
+      // Call backend API to update user
+      const response = await fetch(`${API_BASE_URL}/users/${user.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          first_name: firstName,
+          last_name: lastName,
+          email,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Update failed');
+      }
+
       const updatedUser = {
-        ...user,
-        first_name: firstName,
-        last_name: lastName,
-        email,
+        id: data.id,
+        email: data.email,
+        first_name: data.first_name,
+        last_name: data.last_name,
       };
       
       localStorage.setItem('user', JSON.stringify(updatedUser));
@@ -119,18 +175,25 @@ export const AuthProvider = ({ children }) => {
         throw new Error('No user logged in');
       }
 
-      if (user.password !== oldPassword) {
-        throw new Error('Current password is incorrect');
+      // Call backend API to update password
+      const response = await fetch(`${API_BASE_URL}/users/${user.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          password: newPassword,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Password change failed');
       }
 
-      const updatedUser = {
-        ...user,
-        password: newPassword,
-      };
-      
-      localStorage.setItem('user', JSON.stringify(updatedUser));
-      setUser(updatedUser);
-      return updatedUser;
+      // Note: We don't store password in localStorage for security
+      return user;
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Password change failed';
       setError(errorMessage);

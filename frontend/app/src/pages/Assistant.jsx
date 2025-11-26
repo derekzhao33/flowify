@@ -344,7 +344,7 @@ export default function Assistant() {
   return (
     <div className={`flex min-h-screen ${theme === 'dark' ? 'dark' : ''}`} style={{ background: PRIMARY_BG }}>
       <Sidebar />
-      <div className={`flex transition-all duration-300 ${isCollapsed ? 'ml-20' : 'ml-64'}`} style={{ height: '100vh', maxHeight: '100vh', overflow: 'hidden', width: '100%' }}>
+      <div className={`flex transition-all duration-300 ${isCollapsed ? 'ml-20' : 'ml-64'}`} style={{ height: '100vh', maxHeight: '100vh', overflow: 'hidden' }}>
         {/* Conversation History Sidebar */}
         <div className="w-64 border-r flex flex-col p-4 overflow-hidden" style={{ background: 'rgba(255, 255, 255, 0.7)', borderColor: '#E8E0EB' }}>
           <Button
