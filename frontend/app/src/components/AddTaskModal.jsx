@@ -43,7 +43,7 @@ export default function AddTaskModal() {
   const [selectedColor, setSelectedColor] = useState("");
   const [showSuccess, setShowSuccess] = useState(false);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
 
     if (!taskName || !startTime || !endTime) {
@@ -63,14 +63,19 @@ export default function AddTaskModal() {
       date: format(new Date(), "yyyy-MM-dd"),
     };
 
-    addTask(newTask);
+    try {
+      await addTask(newTask);
 
-    setShowSuccess(true);
-    setTimeout(() => {
-      setShowSuccess(false);
-      resetForm();
-      closeAddTaskModal();
-    }, 1500);
+      setShowSuccess(true);
+      setTimeout(() => {
+        setShowSuccess(false);
+        resetForm();
+        closeAddTaskModal();
+      }, 1500);
+    } catch (error) {
+      console.error("Failed to add task:", error);
+      alert("Failed to add task. Please make sure you are logged in and try again.");
+    }
   };
 
   const resetForm = () => {

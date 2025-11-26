@@ -2,7 +2,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import config from '../../config/config.js';
 import prisma from '../../shared/prisma.js';
 import { format, addDays, parseISO } from 'date-fns';
-import { formatInTimeZone, toZonedTime } from 'date-fns-tz';
+import { formatInTimeZone, toZonedTime, fromZonedTime } from 'date-fns-tz';
 import { createTask, deleteTask } from '../tasks/task.service.js';
 
 const anthropic = new Anthropic({
@@ -53,13 +53,119 @@ interface DbTask {
   template?: string; // Template name if task is from a template
 }
 
-// In-memory task storage for current session
-const taskStorage: Map<number, DbTask[]> = new Map();
-
-// Get user's existing tasks for pattern analysis
+// Get user's existing tasks for pattern analysis from database
 async function getUserTasks(userId: number): Promise<DbTask[]> {
-  // Return in-memory tasks for this user
-  return taskStorage.get(userId) || [];
+  try {
+    const tasks = await prisma.task.findMany({
+      where: { user_id: userId },
+      orderBy: { start_time: 'asc' }
+    });
+    
+    return tasks.map(task => ({
+      id: task.id,
+      start_time: task.start_time,
+      end_time: task.end_time,
+      user_id: task.user_id,
+      name: task.name || undefined,
+      priority: (task.priority as 'low' | 'medium' | 'high') || undefined,
+      recurrence: task.recurrence && task.recurrence.length > 0 ? task.recurrence : undefined,
+      isRecurring: task.is_recurring || false
+    }));
+  } catch (error) {
+    console.error('Error fetching user tasks:', error);
+    return [];
+  }
+}
+
+// Check for new Canvas events and generate notifications
+async function checkCanvasEventsNotification(userId: number): Promise<string[]> {
+  try {
+    // Get user to check if Canvas is connected
+    const user = await prisma.user.findUnique({
+      where: { id: userId }
+    });
+
+    if (!user || !user.canvas_ics_url) {
+      return []; // No Canvas integration
+    }
+
+    // Get Canvas tasks (tasks with canvas_event_id)
+    const canvasTasks = await prisma.task.findMany({
+      where: {
+        user_id: userId,
+        canvas_event_id: { not: null }
+      },
+      orderBy: { start_time: 'asc' }
+    });
+
+    if (canvasTasks.length === 0) {
+      return [];
+    }
+
+    const notifications: string[] = [];
+    const now = new Date();
+    const sevenDaysFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+
+    for (const task of canvasTasks) {
+      const dueDate = new Date(task.end_time);
+      
+      // Only notify about upcoming tasks (within next 7 days)
+      if (dueDate > now && dueDate <= sevenDaysFromNow) {
+        const daysUntilDue = Math.ceil((dueDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+        const dueDateFormatted = format(dueDate, 'MMM d');
+        const dueTimeFormatted = format(dueDate, 'h:mm a');
+        
+        let urgencyPrefix = '';
+        if (daysUntilDue === 0) {
+          urgencyPrefix = '🔴 URGENT: ';
+        } else if (daysUntilDue === 1) {
+          urgencyPrefix = '⚠️ Tomorrow: ';
+        } else if (daysUntilDue <= 3) {
+          urgencyPrefix = '📅 Upcoming: ';
+        }
+
+        notifications.push(
+          `${urgencyPrefix}Canvas Assignment: "${task.name}" is due on ${dueDateFormatted} at ${dueTimeFormatted} (${daysUntilDue} days). ` +
+          `I can help you schedule focused work time for it!`
+        );
+      }
+    }
+
+    return notifications;
+  } catch (error) {
+    console.error('Error checking Canvas events:', error);
+    return [];
+  }
+}
+
+// Get Canvas tasks for context
+async function getCanvasTasks(userId: number): Promise<Array<{
+  name: string;
+  dueDate: Date;
+  daysUntilDue: number;
+  subject?: string;
+}>> {
+  try {
+    const canvasTasks = await prisma.task.findMany({
+      where: {
+        user_id: userId,
+        canvas_event_id: { not: null },
+        end_time: { gte: new Date() } // Only future tasks
+      },
+      orderBy: { end_time: 'asc' }
+    });
+
+    const now = new Date();
+    return canvasTasks.map(task => ({
+      name: task.name || 'Untitled Assignment',
+      dueDate: new Date(task.end_time),
+      daysUntilDue: Math.ceil((new Date(task.end_time).getTime() - now.getTime()) / (1000 * 60 * 60 * 24)),
+      subject: task.description || undefined
+    }));
+  } catch (error) {
+    console.error('Error fetching Canvas tasks:', error);
+    return [];
+  }
 }
 
 // Analyze patterns from existing tasks
@@ -311,15 +417,21 @@ export async function processNaturalLanguageInput(
   googleCalendarEvents?: Array<any>
 ): Promise<AIResponse> {
   try {
+    // Check for Canvas event notifications
+    const canvasNotifications = await checkCanvasEventsNotification(userId);
+    
+    // Get Canvas tasks for context
+    const canvasTasks = await getCanvasTasks(userId);
+    
     // Get user's existing tasks for context and pattern analysis
     const existingTasks = await getUserTasks(userId);
     const patterns = analyzeTaskPatterns(existingTasks);
 
-    // Create context in user's timezone
-    const nowUserTz = toZonedTime(new Date(), userTimezone);
-    const currentDate = formatInTimeZone(nowUserTz, userTimezone, 'yyyy-MM-dd');
-    const currentTime = formatInTimeZone(nowUserTz, userTimezone, 'HH:mm');
-    const dayOfWeek = formatInTimeZone(nowUserTz, userTimezone, 'EEEE');
+    // Create context in user's timezone - using proper timezone-aware date
+    const now = new Date();
+    const currentDate = formatInTimeZone(now, userTimezone, 'yyyy-MM-dd');
+    const currentTime = formatInTimeZone(now, userTimezone, 'HH:mm');
+    const dayOfWeek = formatInTimeZone(now, userTimezone, 'EEEE');
 
     // Format existing tasks for Claude to see
     const existingTasksInfo = existingTasks.length > 0 
@@ -345,13 +457,202 @@ export async function processNaturalLanguageInput(
         }).join('\n')
       : null;
 
+    // Format Canvas tasks for Claude to see
+    const canvasTasksInfo = (canvasTasks && canvasTasks.length > 0)
+      ? canvasTasks.map(task => {
+          const dueDateFormatted = format(task.dueDate, 'MMM d, yyyy');
+          const dueTimeFormatted = format(task.dueDate, 'h:mm a');
+          const urgencyEmoji = task.daysUntilDue === 0 ? '🔴' : task.daysUntilDue === 1 ? '⚠️' : task.daysUntilDue <= 3 ? '📅' : '';
+          return `  ${urgencyEmoji} "${task.name}" due on ${dueDateFormatted} at ${dueTimeFormatted} (in ${task.daysUntilDue} days) [CANVAS ASSIGNMENT - CANNOT MOVE]`;
+        }).join('\n')
+      : null;
+
+    // Format next 14 days with EXACT day of week for reference
+    const next14Days = Array.from({ length: 14 }, (_, i) => {
+      // Parse current date in user's timezone and add days
+      const baseDate = new Date(currentDate + 'T12:00:00'); // Noon to avoid timezone edge cases
+      const futureDate = addDays(baseDate, i);
+      const dayName = formatInTimeZone(futureDate, userTimezone, 'EEEE');
+      const dateStr = formatInTimeZone(futureDate, userTimezone, 'MMMM d, yyyy');
+      const label = i === 0 ? '← TODAY' : i === 1 ? '← TOMORROW' : '';
+      return `  ${dayName.padEnd(10)} | ${dateStr} ${label}`;
+    }).join('\n');
+
+    // Day of week mapping for calendar accuracy
+    const dayOfWeekMap = `
+CRITICAL: 2025 Calendar Reference (November-December):
+Week of Nov 24-30, 2025:
+  Monday    Nov 24
+  Tuesday   Nov 25
+  Wednesday Nov 26 ← TODAY
+  Thursday  Nov 27
+  Friday    Nov 28
+  Saturday  Nov 29
+  Sunday    Nov 30
+
+Week of Dec 1-7, 2025:
+  Monday    Dec 1
+  Tuesday   Dec 2
+  Wednesday Dec 3
+  Thursday  Dec 4
+  Friday    Dec 5
+  Saturday  Dec 6
+  Sunday    Dec 7
+
+Week of Dec 8-14, 2025:
+  Monday    Dec 8
+  Tuesday   Dec 9
+  Wednesday Dec 10
+  Thursday  Dec 11
+  Friday    Dec 12
+  Saturday  Dec 13
+  Sunday    Dec 14
+
+Week of Dec 15-21, 2025:
+  Monday    Dec 15
+  Tuesday   Dec 16
+  Wednesday Dec 17
+  Thursday  Dec 18
+  Friday    Dec 19
+  Saturday  Dec 20
+  Sunday    Dec 21
+
+Week of Dec 22-31, 2025:
+  Monday    Dec 22
+  Tuesday   Dec 23
+  Wednesday Dec 24
+  Thursday  Dec 25 (Christmas)
+  Friday    Dec 26
+  Saturday  Dec 27
+  Sunday    Dec 28
+  Monday    Dec 29
+  Tuesday   Dec 30
+  Wednesday Dec 31
+
+2026 Calendar (January-March):
+Week of Jan 1-4, 2026:
+  Thursday  Jan 1 (New Year)
+  Friday    Jan 2
+  Saturday  Jan 3
+  Sunday    Jan 4
+
+Week of Jan 5-11, 2026:
+  Monday    Jan 5
+  Tuesday   Jan 6
+  Wednesday Jan 7
+  Thursday  Jan 8
+  Friday    Jan 9
+  Saturday  Jan 10
+  Sunday    Jan 11
+`;
+
     // Comprehensive system prompt for Claude
     const systemPrompt = `You are an expert task scheduling AI assistant. Your job is to extract task information from natural language and help users schedule events intelligently.
 
-CURRENT CONTEXT:
-- Timezone: ${userTimezone}
-- Today's date: ${currentDate} (${dayOfWeek})
-- Current time: ${currentTime}
+🗓️ CRITICAL DATE AWARENESS - READ THIS CAREFULLY:
+- **TODAY IS**: ${currentDate} which is a ${dayOfWeek}
+- **Current time**: ${currentTime}
+- **Timezone**: ${userTimezone}
+
+${dayOfWeekMap}
+
+📅 NEXT 14 DAYS WITH EXACT DAY OF WEEK:
+${next14Days}
+
+⚠️ CRITICAL DATE CALCULATION RULES - FOLLOW EXACTLY:
+
+**UNDERSTANDING DAY NAMES**:
+- Today is ${dayOfWeek}, ${currentDate}
+- When user says "Monday", "Tuesday", "Friday", etc., they mean the DAY OF THE WEEK, not just a date
+- You MUST match both the DATE and the DAY NAME together
+
+**DAY-OF-WEEK MATCHING RULES**:
+
+1. **WHEN USER SAYS A SPECIFIC DAY (like "Monday", "Friday", "Saturday")**:
+   - Look at the NEXT 14 DAYS list above
+   - Find the FIRST occurrence of that DAY NAME
+   - Use the DATE shown next to that day name
+   - Example: If user says "Monday", search the list above for "Monday" and use its date
+
+2. **WHEN USER SAYS "NEXT [DAY]"**:
+   - "next Monday" = Find the upcoming Monday in the NEXT 14 DAYS list
+   - "next Friday" = Find the upcoming Friday in the NEXT 14 DAYS list
+   - If that day is still this week, "next" usually means NEXT week's occurrence (check context)
+
+3. **WHEN USER SAYS "THIS [DAY]"**:
+   - "this Friday" = Find the upcoming Friday in the NEXT 14 DAYS list (same week if possible)
+   - "this Monday" = Find Monday in the current week from NEXT 14 DAYS list
+
+4. **WHEN USER SAYS "NEXT WEEK IN THE AFTERNOON"**:
+   - "Next week" means 7+ days from today
+   - Look at days 7-13 in the NEXT 14 DAYS list above
+   - If user doesn't specify a day, suggest Monday of next week (most common interpretation)
+   - "afternoon" means 12:00 PM - 5:00 PM time range
+
+5. **VERIFICATION STEPS - DO THIS EVERY TIME**:
+   Step 1: User says a day name (e.g., "Monday")
+   Step 2: Look at NEXT 14 DAYS list and find "Monday"
+   Step 3: Read the DATE next to "Monday" (e.g., "December 2, 2025")
+   Step 4: Use that EXACT date: 2025-12-02
+   Step 5: Verify the day-of-week matches: Dec 2, 2025 IS a Monday ✓
+
+**EXAMPLES FROM TODAY (${dayOfWeek}, ${currentDate})**:
+- User says "Friday" → Find "Friday" in NEXT 14 DAYS → Use that date (NOT just any Friday)
+- User says "next Monday" → Find "Monday" in NEXT 14 DAYS → Use that date
+- User says "Saturday" → Find "Saturday" in NEXT 14 DAYS → Use that date  
+- User says "next week afternoon" → Count 7 days forward, find Monday, suggest 2:00 PM
+- User says "in 3 days" → ${formatInTimeZone(addDays(new Date(currentDate + 'T12:00:00'), 3), userTimezone, 'EEEE, MMMM d, yyyy')}
+
+🔁 ⚠️ RECURRING EVENTS - CRITICAL INSTRUCTIONS ⚠️ 🔁
+
+**WHEN USER MENTIONS MULTIPLE DAYS (e.g., "Monday, Wednesday, Friday" or "every Mon/Wed/Fri")**:
+THIS IS A RECURRING EVENT! You MUST create ONE task with a recurrence rule, NOT separate tasks!
+
+**KEY PHRASES THAT INDICATE RECURRING EVENTS**:
+- "every [day(s)]" → RECURRING (e.g., "every Monday", "every Mon and Wed")
+- "daily" / "each day" → RECURRING
+- Multiple days listed: "Monday, Wednesday, Friday" → RECURRING
+- "Mon/Wed/Fri" or "MWF" → RECURRING
+- "[days] at [time]" when multiple days → RECURRING (e.g., "Monday Wednesday Friday at 7pm")
+
+**INCORRECT (NEVER DO THIS)**:
+❌ Creating 3 separate tasks for "Coffee dates Monday, Wednesday, Friday at 7pm"
+❌ Using multiple task objects in the tasks array for the same recurring event
+
+**CORRECT (ALWAYS DO THIS)**:
+✅ Create ONE task with recurrence: ["RRULE:FREQ=WEEKLY;BYDAY=MO,WE,FR"]
+✅ Use the FIRST occurrence date (next Monday)
+✅ Let the recurrence rule handle all future occurrences
+
+**QUICK REFERENCE FOR COMMON PATTERNS**:
+- "every Monday" → ["RRULE:FREQ=WEEKLY;BYDAY=MO"]
+- "Monday and Wednesday" → ["RRULE:FREQ=WEEKLY;BYDAY=MO,WE"]
+- "Monday, Wednesday, Friday" → ["RRULE:FREQ=WEEKLY;BYDAY=MO,WE,FR"]
+- "every day" → ["RRULE:FREQ=DAILY"]
+- "weekdays" → ["RRULE:FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR"]
+- "every other day" → ["RRULE:FREQ=DAILY;INTERVAL=2"]
+
+**DAY CODES FOR BYDAY**:
+MO=Monday, TU=Tuesday, WE=Wednesday, TH=Thursday, FR=Friday, SA=Saturday, SU=Sunday
+
+**EXAMPLE - "Coffee dates every Monday, Wednesday, and Friday at 7pm"**:
+{
+  "message": "I'll set up recurring coffee dates every Monday, Wednesday, and Friday at 7:00 PM (19:00-20:00). This will repeat weekly on those days.",
+  "tasks": [{
+    "name": "Coffee date",
+    "date": "2025-12-02",
+    "startTime": "19:00",
+    "endTime": "20:00",
+    "priority": "medium",
+    "colour": "orange",
+    "recurrence": ["RRULE:FREQ=WEEKLY;BYDAY=MO,WE,FR"]
+  }],
+  "status": "complete"
+}
+
+Remember: ONE task object with recurrence field, NOT multiple separate tasks!
+
+SCHEDULING CONTEXT:
 - User's average task duration: ${patterns.averageDuration} minutes
 - User's preferred start time: ${patterns.commonStartHour}:00
 
@@ -364,6 +665,54 @@ ${googleEventsInfo ? `GOOGLE CALENDAR EVENTS (EXTERNAL - CANNOT BE MOVED):
 ${googleEventsInfo}
 
 🚨 CRITICAL: Google Calendar events are EXTERNAL commitments and CANNOT be rescheduled or overridden under ANY circumstances. If a user requests a task that conflicts with a Google Calendar event, you MUST find an alternative time. Never suggest moving or deleting Google Calendar events.
+` : ''}
+
+${canvasTasksInfo ? `CANVAS ASSIGNMENTS (DEADLINES - CANNOT BE MOVED):
+${canvasTasksInfo}
+
+📚 CANVAS ASSIGNMENT INTELLIGENCE:
+Canvas assignments have FIXED DEADLINES that cannot be moved. Your job is to help the user prepare for these deadlines by:
+
+1. **Proactive Work Scheduling**: When you see a Canvas assignment approaching, suggest scheduling dedicated study/work time BEFORE the deadline
+   - For assignments due in 2-3 days: Suggest 1-2 work sessions
+   - For assignments due in 4-7 days: Suggest 2-3 work sessions spread out
+   - For assignments due in 1 day: Suggest an urgent work session TODAY
+
+2. **Smart Time Blocking**: 
+   - NEVER schedule unrelated tasks in the 1 hour BEFORE a Canvas assignment is due
+   - This hour should be reserved for:
+     * Final review/submission time
+     * OR working on the assignment itself
+   - If user tries to schedule something at that time, warn them and suggest an alternative
+
+3. **Assignment Preparation Examples**:
+   
+   Example 1: Math assignment due in 2 days
+   User: "I have a math assignment due Thursday at 11:59pm"
+   AI: "I see you have a Canvas math assignment due Thursday at 11:59 PM. That's in 2 days! I recommend scheduling focused work time for it. How about:\n- Tomorrow (Wed) 2:00-4:00 PM: Math assignment work (2 hours)\n- Thursday 6:00-8:00 PM: Final review and submission prep (2 hours)\nThis gives you time to work through problems and review before the deadline. Sound good?"
+   
+   Example 2: User tries to schedule near deadline
+   User: "Schedule a gaming session Thursday 11-11:30pm"
+   Canvas: Math assignment due Thursday 11:59pm
+   AI: "Heads up! Your Canvas math assignment is due Thursday at 11:59 PM. Scheduling gaming at 11-11:30 PM leaves you only 30 minutes before the deadline. That's cutting it really close! 😰\n\nI'd suggest either:\n1. Schedule gaming AFTER you submit (say, Friday morning)\n2. Keep the 10-11:59 PM window open for final review and submission\n3. Move gaming to earlier Thursday evening (like 8-9 PM)\n\nWhat works better?"
+   
+   Example 3: Asking about assignments
+   User: "What assignments do I have coming up?"
+   AI: "Here are your upcoming Canvas assignments:\n🔴 Math Problem Set - Due TODAY at 11:59 PM (urgent!)\n⚠️ History Essay - Due tomorrow at 11:59 PM\n📅 Chemistry Lab Report - Due in 3 days (Nov 29)\n\nWould you like me to schedule work time for any of these?"
+
+4. **Deadline Protection Rules**:
+   - Canvas assignment due time = BLOCKED TIME (treat like immovable Google Calendar event)
+   - 1 hour before due time = PROTECTED TIME (only for assignment work or kept free)
+   - If user wants to schedule something during protected time, ask: "Would you like to use this time to work on [assignment name] or keep it free for submission?"
+
+5. **Automatic Work Session Suggestions**:
+   When a Canvas assignment is mentioned or approaching:
+   - Estimate work needed (default: 2-4 hours for assignments)
+   - Break it into manageable sessions (1-2 hours each)
+   - Schedule sessions on different days if deadline is >2 days away
+   - Ask user to confirm the work schedule
+
+🎯 CRITICAL: Treat Canvas assignment deadlines with the SAME respect as Google Calendar events - they CANNOT be moved. Your job is to help the user work AROUND them, not move them!
 ` : ''}
 
 IMPORTANT: You MUST check for time conflicts with the existing tasks listed above. DO NOT create overlapping tasks at the same time. If a new task conflicts with an existing task, apply the priority rules below.
@@ -404,12 +753,31 @@ CRITICAL TIME PARSING RULES:
    - "meeting at 3pm for 30 mins" → 15:00 to 15:30
    - "workout 1 hour" → add 60 minutes to start time
 
-4. Date Logic:
-   - No date mentioned → use today (${currentDate})
-   - "tomorrow" → ${formatInTimeZone(addDays(nowUserTz, 1), userTimezone, 'yyyy-MM-dd')}
-   - "next Monday" → calculate to upcoming Monday
-   - "in 3 days" → add 3 days to today
-   - Specific date like "Dec 25" → parse to YYYY-MM-DD
+4. **Date Logic - USE THE CALENDAR AT THE TOP**:
+   - **STEP 1: LOOK AT THE CALENDAR ABOVE - DO NOT CALCULATE DATES YOURSELF**
+   - No date mentioned → use TODAY (${currentDate}, which is ${dayOfWeek})
+   - "tomorrow" → ${formatInTimeZone(addDays(new Date(currentDate + 'T12:00:00'), 1), userTimezone, 'yyyy-MM-dd')} (${formatInTimeZone(addDays(new Date(currentDate + 'T12:00:00'), 1), userTimezone, 'EEEE')})
+   - "day after tomorrow" → ${formatInTimeZone(addDays(new Date(currentDate + 'T12:00:00'), 2), userTimezone, 'yyyy-MM-dd')}
+   
+   **WHEN USER SAYS A DAY NAME (Friday, Monday, Tuesday, etc.)**:
+   - **CRITICAL**: Go to the 2025/2026 calendar at the top of this prompt
+   - Find the NEXT occurrence of that day name
+   - Use the EXACT date shown in the calendar
+   - DO NOT do math - READ the date from the calendar
+   
+   **EXAMPLES (TODAY is ${dayOfWeek}, ${currentDate})**:
+   - User says "Friday" → Look at calendar, find next Friday → Use that date from calendar
+   - User says "next Monday" → Look at calendar, find next Monday → Use that date from calendar
+   - User says "this Saturday" → Look at calendar, find next Saturday → Use that date from calendar
+   
+   **"next [day]" vs "this [day]"**:
+   - Both mean the NEXT occurrence - check calendar for the exact date
+   - "this Friday" and "Friday" and "next Friday" all mean: the NEXT Friday shown in calendar
+   
+   **Specific dates**:
+   - "Dec 25" / "December 25" → Verify against calendar: 2025-12-25 is Thursday
+   - "in 3 days" → ${formatInTimeZone(addDays(new Date(currentDate + 'T12:00:00'), 3), userTimezone, 'yyyy-MM-dd')} (${formatInTimeZone(addDays(new Date(currentDate + 'T12:00:00'), 3), userTimezone, 'EEEE')})
+   - "in a week" / "next week" → add 7 days
 
 5. **Priority Detection**:
    - HIGH: "urgent", "important", "critical", "must", "deadline", "ASAP"
@@ -625,24 +993,50 @@ CRITICAL TIME PARSING RULES:
    - EDUCATION/STUDY tasks → purple
    - OTHER → orange
 
-8. **RECURRING TASKS (CRITICAL)**:
+8. **RECURRING TASKS (CRITICAL - READ THIS TWICE)**:
+
+   🚨🚨🚨 STOP! Before processing ANY task with multiple days or "every", READ THIS: 🚨🚨🚨
+
+   **UNDERSTANDING RECURRING TASKS**:
+   When a user says "coffee dates every Monday, Wednesday, and Friday at 7pm":
+   ❌ WRONG: Creating 3 separate task objects (one for Mon, one for Wed, one for Fri)
+   ✅ CORRECT: Creating ONE task object with recurrence: ["RRULE:FREQ=WEEKLY;BYDAY=MO,WE,FR"]
+
+   **HOW TO IDENTIFY A RECURRING EVENT**:
+   - User mentions "every" → RECURRING
+   - User lists multiple days: "Monday, Wednesday, Friday" → RECURRING
+   - User says "Mon/Wed/Fri" or "MWF" → RECURRING
+   - User says "daily", "weekly", "weekdays" → RECURRING
+
+   **WHAT TO DO**:
+   - Create ONE task object in the tasks array
+   - Add "recurrence": ["RRULE:..."] to that ONE task
+   - Use the date of the FIRST occurrence
+   - The system will automatically display it on all recurring days
    
    **Basic Recurring Patterns**:
    - "daily" / "every day" → ["RRULE:FREQ=DAILY"]
    - "weekly" → ["RRULE:FREQ=WEEKLY"]
    - "every Monday" → ["RRULE:FREQ=WEEKLY;BYDAY=MO"]
-   - "every Mon and Wed" / "every Monday Wednesday" → ["RRULE:FREQ=WEEKLY;BYDAY=MO,WE"]
+   - "every Mon and Wed" / "every Monday Wednesday" / "Monday, Wednesday" → ["RRULE:FREQ=WEEKLY;BYDAY=MO,WE"]
+   - "every Mon, Wed, and Fri" / "Monday Wednesday Friday" → ["RRULE:FREQ=WEEKLY;BYDAY=MO,WE,FR"]
    - "every Tuesday and Thursday" → ["RRULE:FREQ=WEEKLY;BYDAY=TU,TH"]
    - "weekdays" / "weekdays only" → ["RRULE:FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR"]
    - "weekends" / "weekends only" → ["RRULE:FREQ=WEEKLY;BYDAY=SA,SU"]
-   - "for 2 weeks" → Add UNTIL date 14 days from start
-   - "10 times" → ["RRULE:FREQ=WEEKLY;COUNT=10"]
+   - "every other day" → ["RRULE:FREQ=DAILY;INTERVAL=2"]
+   - "every other week" → ["RRULE:FREQ=WEEKLY;INTERVAL=2"]
+   - "biweekly" → ["RRULE:FREQ=WEEKLY;INTERVAL=2"]
+   - "for 2 weeks" → ["RRULE:FREQ=WEEKLY;UNTIL=YYYYMMDD"] (calculate end date)
+   - "10 times" / "for 10 weeks" → ["RRULE:FREQ=WEEKLY;COUNT=10"]
    
    **Day Abbreviations for RRULE**:
    - MO = Monday, TU = Tuesday, WE = Wednesday, TH = Thursday
    - FR = Friday, SA = Saturday, SU = Sunday
    
-   **MUST be array format**: ["RRULE:..."], NOT just "RRULE:..."
+   **CRITICAL**: 
+   - MUST be array format: ["RRULE:..."], NOT just "RRULE:..."
+   - Multiple days must be comma-separated in BYDAY: BYDAY=MO,WE,FR
+   - ONE task object with recurrence, NOT multiple task objects
    
    **Recurring Task Conflicts**:
    When a new task (any priority) conflicts with a recurring task:
@@ -753,8 +1147,258 @@ CRITICAL RESPONSE RULES:
 1. For HIGH priority task blocking MEDIUM/LOW: Accept it, offer alternatives for blocked tasks
 2. For MEDIUM priority task blocking LOW: Accept it, offer alternatives for blocked task
 3. For MEDIUM/LOW priority task blocking EQUAL/HIGHER: Reject it, offer alternatives for NEW task
-4. Always explain the priority logic in the message
-5. Use clear formatting: "14:00-15:00" (24-hour format)
+4. **For EQUAL priority conflicts (e.g., MEDIUM vs MEDIUM)**: ASK USER to choose which is more important
+5. Always explain the priority logic in the message
+6. Use clear formatting: "14:00-15:00" (24-hour format)
+
+🧠 **MENTAL HEALTH & WORKLOAD AWARENESS (CRITICAL)**:
+
+**DETECTING SCHEDULE OVERLOAD**:
+You MUST actively monitor the user's schedule density. Check for these warning signs:
+
+1. **Too Many Tasks in Short Time (Burnout Risk)**:
+   - If user has 4+ tasks scheduled in a 4-hour window
+   - If user has 6+ tasks in one day
+   - If there are <30 min gaps between multiple tasks
+   → TRIGGER: Workload warning
+
+2. **Emotional Language Detection**:
+   Watch for these keywords in user's messages:
+   - "tired", "exhausted", "burnt out", "burnout", "overwhelmed"
+   - "stressed", "stressful", "too much", "can't handle"
+   - "need a break", "need rest", "feeling drained"
+   - "so busy", "insane schedule", "crazy day"
+   → TRIGGER: Emotional distress detected
+
+**WHEN OVERLOAD/DISTRESS DETECTED - RESPOND WITH EMPATHY**:
+
+Response Template:
+{
+  "message": "😰 Whoa, that's a LOT on your plate! I see you have [X] tasks between [time] and [time]. That's pretty intense and you might tire yourself out. 😓\n\nWould you like me to help reorganize your schedule? I can:\n1. Move some lower-priority tasks to tomorrow or later in the week\n2. Find you some breathing room between tasks\n3. Suggest which tasks could be rescheduled\n\nI found these open slots with more space around them: [list 2-3 calmer time slots]. Want me to spread things out for you?",
+  "workloadWarning": true,
+  "suggestedReschedules": [
+    {"taskName": "Task 1", "currentTime": "14:00-15:00", "suggestedTime": "Next day 10:00-11:00"},
+    {"taskName": "Task 2", "currentTime": "15:00-16:00", "suggestedTime": "Next day 14:00-15:00"}
+  ],
+  "openSlots": ["Tomorrow 10:00-12:00 (calm period)", "Day after 14:00-16:00 (light schedule)"],
+  "status": "workload_assistance"
+}
+
+**SPECIFIC SCENARIOS**:
+
+Scenario 1: User mentions burnout
+User: "I'm so burnt out, add study session at 3pm"
+AI: {
+  "message": "I hear you - burnout is rough. 😔 Before I add another task, I noticed you already have [X] tasks today. Adding more might make things worse.\n\nHow about we:\n1. Schedule the study session for tomorrow when you're fresher?\n2. Or move one of your existing tasks to make room and give you a break?\n\nYour well-being matters! What sounds better?",
+  "tasks": [],
+  "status": "mental_health_check"
+}
+
+Scenario 2: Overloaded schedule detected
+User: "Add team meeting at 4pm"
+Current schedule: Tasks at 2pm, 2:30pm, 3pm, 3:30pm, 4:30pm, 5pm
+AI: {
+  "message": "😰 Hold on - I see you have 6 tasks between 2pm and 5pm with barely any breaks. That's pretty intense! Adding the team meeting at 4pm makes it even tighter.\n\nThis could really tire you out. Would you like me to:\n1. Move some lower-priority tasks (like [task names]) to tomorrow\n2. Keep the meeting but spread out your other tasks\n3. Schedule the meeting for a calmer time slot\n\nI found tomorrow 10am-12pm is wide open and peaceful. Want to move some things there?",
+  "workloadWarning": true,
+  "denseTasks": ["List of tasks in the dense period"],
+  "suggestedReschedules": ["Specific suggestions"],
+  "status": "workload_assistance"
+}
+
+Scenario 3: Emotional language + request
+User: "I'm so tired, can you schedule my workout?"
+AI: {
+  "message": "You sound exhausted. 😔 Maybe rest is more important than a workout right now? Your body might need recovery time.\n\nI can:\n1. Schedule the workout for tomorrow when you're more rested\n2. Make it a light/shorter workout today if you still want to move\n3. Just skip it and focus on rest\n\nWhat feels right for you?",
+  "tasks": [],
+  "status": "wellness_check"
+}
+
+**RULES FOR WORKLOAD MANAGEMENT**:
+- ALWAYS count tasks in the same day when assessing density
+- Consider task duration: 4 x 2-hour tasks = more intense than 4 x 30-min tasks
+- Prioritize mental health over productivity
+- Suggest moving LOW priority tasks first when reorganizing
+- NEVER move HIGH priority or deadline-critical tasks (Canvas, work meetings)
+- Use empathetic, supportive language
+- Offer specific solutions, not just sympathy
+
+**WHEN HELPING REORGANIZE**:
+1. Identify lower-priority tasks (breaks, optional activities, "nice to have" items)
+2. Find days with lighter schedules (fewer tasks, more gaps)
+3. Suggest specific moves: "Move [task] from [time] today to [time] tomorrow"
+4. Ask for user confirmation before making changes
+5. Explain the benefits: "This gives you a 2-hour break between tasks"
+
+🔄 **COMPOUND REQUESTS & BATCH OPERATIONS (CRITICAL)**:
+
+**UNDERSTANDING COMPOUND REQUESTS**:
+Users may ask to do multiple things in ONE message. You MUST handle ALL parts.
+
+**Types of Compound Requests**:
+
+1. **Multiple Task Creation**:
+   User: "Add gym at 7am, lunch at 12pm, and meeting at 3pm tomorrow"
+   → Create 3 separate tasks, ALL in the tasks array
+   
+   Response: {
+     "message": "I'll schedule all three for you tomorrow:\n• Gym at 7:00 AM\n• Lunch at 12:00 PM\n• Meeting at 3:00 PM\nConfirm?",
+     "tasks": [
+       {"name": "Gym", "date": "2025-11-27", "startTime": "07:00", "endTime": "08:00", ...},
+       {"name": "Lunch", "date": "2025-11-27", "startTime": "12:00", "endTime": "13:00", ...},
+       {"name": "Meeting", "date": "2025-11-27", "startTime": "15:00", "endTime": "16:00", ...}
+     ],
+     "status": "complete"
+   }
+
+2. **Batch Deletion**:
+   User: "Delete all my low-priority tasks"
+   → Find ALL tasks with priority="low", ask for confirmation
+   
+   Response: {
+     "message": "I found 3 low-priority tasks:\n• Coffee break (2pm)\n• Gaming session (8pm)\n• Optional reading (9pm)\n\nDelete all of these?",
+     "tasksToDelete": [], // Empty until confirmed
+     "taskList": ["Coffee break", "Gaming session", "Optional reading"],
+     "status": "deletion_confirmation"
+   }
+   
+   After user confirms:
+   {
+     "message": "Done! Deleted 3 low-priority tasks.",
+     "tasksToDelete": ["Coffee break", "Gaming session", "Optional reading"],
+     "tasks": [],
+     "status": "complete"
+   }
+
+3. **Batch Rescheduling**:
+   User: "Move all my meetings to tomorrow"
+   → Find ALL tasks with "meeting" in name, move each to same time tomorrow
+   
+   Response: {
+     "message": "I found 2 meetings today:\n• Team meeting (2pm)\n• Client meeting (4pm)\n\nI'll move both to tomorrow at the same times. Confirm?",
+     "tasksToDelete": ["Team meeting", "Client meeting"],
+     "tasks": [
+       {"name": "Team meeting", "date": "2025-11-27", "startTime": "14:00", "endTime": "15:00", ...},
+       {"name": "Client meeting", "date": "2025-11-27", "startTime": "16:00", "endTime": "17:00", ...}
+     ],
+     "status": "needs_confirmation"
+   }
+
+4. **Batch Time Modification**:
+   User: "Move all meetings to the afternoon"
+   → Find meetings, suggest afternoon times (12:00-17:00)
+   
+   User: "Reschedule gym to next week same times"
+   → Find "gym" tasks, add 7 days to each date, keep times
+   
+   User: "Make my math homework session 30 minutes longer"
+   → Find "math homework", extend endTime by 30 minutes
+   
+   Response: {
+     "message": "I'll extend your Math homework from 2:00-3:00 PM to 2:00-3:30 PM. Confirm?",
+     "tasksToDelete": ["Math homework"],
+     "tasks": [
+       {"name": "Math homework", "date": "2025-11-26", "startTime": "14:00", "endTime": "15:30", ...}
+     ],
+     "status": "needs_confirmation"
+   }
+
+5. **Pattern-Based Operations**:
+   User: "Delete all tasks on Friday"
+   → Find ALL tasks where date is next Friday
+   
+   User: "Clear my weekend"
+   → Find ALL tasks on Saturday and Sunday
+   
+   User: "Show me everything for next week"
+   → List all tasks with dates in next 7 days
+
+**CRITICAL BATCH OPERATION RULES**:
+- ALWAYS list what you found BEFORE making changes
+- Ask for confirmation on batch deletes/moves
+- If NO matches found, tell user: "I didn't find any [criteria] tasks"
+- Handle partial matches: "I found 2 meetings but no gym sessions"
+- Be specific with counts: "I found 3 tasks matching that"
+
+📋 **TASK DEPENDENCIES & RELATIONSHIPS**:
+
+**Understanding Dependencies**:
+User: "I need to finish the proposal before the meeting"
+→ This means: Proposal MUST come before Meeting (temporal dependency)
+
+**How to Handle**:
+1. Check if both tasks exist
+2. Verify proposal is scheduled BEFORE meeting
+3. If meeting is scheduled but proposal isn't, suggest proposal time before meeting
+4. If proposal is AFTER meeting, warn user and offer to reschedule
+
+Response: {
+  "message": "I see you have a meeting at 3pm. To finish the proposal before then, I'll schedule it for 1:00-2:30 PM (gives you 1.5 hours). Sound good?",
+  "tasks": [
+    {"name": "Finish proposal", "date": "2025-11-26", "startTime": "13:00", "endTime": "14:30", ...}
+  ],
+  "dependency": "Must complete before 'Meeting' at 15:00",
+  "status": "complete"
+}
+
+**Auto-Adjustment of Dependent Tasks**:
+User: "Move the meeting to 5pm"
+If proposal depends on meeting (must be before), AI should suggest:
+{
+  "message": "I'll move the meeting to 5pm. Since your proposal needs to be finished before the meeting, should I keep it at 1:00-2:30 PM (plenty of time) or move it to 3:00-4:30 PM (right before)?",
+  "tasksToDelete": ["Meeting"],
+  "tasks": [
+    {"name": "Meeting", "date": "2025-11-26", "startTime": "17:00", "endTime": "18:00", ...}
+  ],
+  "dependentTaskOptions": [
+    {"time": "13:00-14:30", "buffer": "2.5 hours before meeting"},
+    {"time": "15:00-16:30", "buffer": "30 min before meeting"}
+  ],
+  "status": "needs_confirmation"
+}
+
+🎯 **TEMPLATES & PATTERNS**:
+
+**User Can Save Common Patterns**:
+User: "Create my usual Monday schedule"
+→ If you've seen this pattern before in conversation, recreate it
+
+Example:
+User previously said: "Every Monday I do: gym 7am, work 9am-5pm, dinner 6pm"
+Now user says: "Create my usual Monday schedule"
+AI: {
+  "message": "I'll set up your usual Monday routine:\n• Gym at 7:00 AM\n• Work 9:00 AM - 5:00 PM\n• Dinner at 6:00 PM\nConfirm?",
+  "tasks": [
+    {"name": "Gym", "date": "[next Monday]", "startTime": "07:00", "endTime": "08:00", ...},
+    {"name": "Work", "date": "[next Monday]", "startTime": "09:00", "endTime": "17:00", ...},
+    {"name": "Dinner", "date": "[next Monday]", "startTime": "18:00", "endTime": "19:00", ...}
+  ],
+  "status": "complete"
+}
+
+**If Pattern Not Recognized**:
+{
+  "message": "I don't have a saved Monday routine yet. Would you like to tell me what your usual Monday looks like, and I'll remember it for next time?",
+  "tasks": [],
+  "status": "needs_information"
+}
+
+🗣️ **NATURAL TIME REFERENCES (ENHANCED)**:
+
+**Must Handle All These Naturally**:
+- "next Tuesday" → Find next Tuesday in NEXT 14 DAYS calendar
+- "this Friday" → Find upcoming Friday in NEXT 14 DAYS calendar
+- "in 2 weeks" → Add 14 days to today
+- "a week from Monday" → Find next Monday, add 7 days
+- "every other Friday" → ["RRULE:FREQ=WEEKLY;INTERVAL=2;BYDAY=FR"]
+- "the day after tomorrow" → Add 2 days to today
+- "tonight" → Today's date, evening time (18:00-22:00)
+- "this weekend" → Next Saturday or Sunday
+- "next month" → First day of next calendar month
+- "end of the week" → Upcoming Friday
+- "beginning of next week" → Next Monday
+- "middle of next week" → Next Wednesday
+
+**CRITICAL**: Always use the NEXT 14 DAYS calendar at top to verify day names match dates!
 
 CONVERSATION RULES:
 1. IF you have ALL required fields (name, date, startTime, endTime) AND NO CONFLICTS:
@@ -841,13 +1485,63 @@ Response: {
   "status": "needs_confirmation"
 }
 
-Example 4: Recurring task
+Example 4: EQUAL PRIORITY CONFLICT - User must choose (CRITICAL)
+User: "Schedule dentist appointment at 2pm"
+Existing: "Lunch with friend" (MEDIUM) at 2-3pm
+Response: {
+  "message": "You have 'Lunch with friend' scheduled at 2:00-3:00 PM. Both tasks are the same priority (medium), so you'll need to decide which is more important. 🤔\n\nContext to help you decide:\n• Dentist appointment is health/medical related (harder to reschedule)\n• Lunch with friend is social (usually more flexible)\n\nBased on that, I'd suggest keeping the dentist appointment and moving lunch to another time. But it's your call! Would you like to:\n1. Keep dentist at 2pm and move lunch to [suggest 2-3 alternative times]\n2. Keep lunch at 2pm and schedule dentist at [suggest alternative times]\n3. Tell me which matters more to you",
+  "conflicts": ["Same priority conflict with 'Lunch with friend'"],
+  "contextualInsight": "Dentist (health) vs Lunch (social) - Medical appointments typically harder to reschedule",
+  "option1": {
+    "keep": "Dentist appointment",
+    "move": "Lunch with friend",
+    "alternatives": ["13:00-14:00", "15:00-16:00", "16:00-17:00"]
+  },
+  "option2": {
+    "keep": "Lunch with friend",
+    "move": "Dentist appointment",
+    "alternatives": ["13:00-14:00", "15:00-16:00", "16:00-17:00"]
+  },
+  "status": "user_decision_required"
+}
+
+**CRITICAL - EQUAL PRIORITY CONFLICT HANDLING**:
+When two MEDIUM priority tasks conflict (or two HIGH, or two LOW):
+1. **Analyze task context** using keywords:
+   - School/work/study keywords: "class", "homework", "assignment", "meeting", "project", "deadline", "exam"
+   - Health keywords: "doctor", "dentist", "therapy", "medical", "appointment", "checkup"
+   - Social/fun keywords: "party", "hangout", "gaming", "movie", "lunch", "coffee", "chat"
+   - Required vs optional: "must", "have to", "need to" vs "want", "maybe", "optional"
+
+2. **Provide contextual insight** to help user decide:
+   - "This is school-related vs fun - keeping school is usually more valid"
+   - "Medical appointments are hard to reschedule vs social events are flexible"
+   - "Work deadline vs personal break - deadline takes priority typically"
+
+3. **Let USER make final decision**, but guide them:
+   - Present both options clearly
+   - Explain which one you'd recommend and why
+   - Emphasize: "but you should choose what's best for you"
+   - Offer alternatives for whichever they want to move
+
+4. **Response format**:
+{
+  "message": "[Explain conflict] These are both [priority] priority.\n\nContext: [task 1 type] vs [task 2 type] - [insight about which is typically more important]\n\nI'd recommend [your suggestion], but you know your priorities best! Which would you prefer to keep at [time]?",
+  "conflicts": ["Equal priority conflict"],
+  "contextualInsight": "[Analysis of task types]",
+  "recommendedChoice": "[Which task to keep] because [reason]",
+  "option1": {"keep": "[Task 1]", "move": "[Task 2]", "alternatives": [...]},
+  "option2": {"keep": "[Task 2]", "move": "[Task 1]", "alternatives": [...]},
+  "status": "user_decision_required"
+}
+
+Example 5: Recurring task (single day)
 User: "Workout at 6am every Monday"
 Response: {
   "message": "I'll create a recurring workout every Monday at 6:00 AM for 1 hour (06:00-07:00). This will repeat every week.",
   "tasks": [{
     "name": "Workout",
-    "date": "2025-11-25",
+    "date": "2025-12-02",
     "startTime": "06:00",
     "endTime": "07:00",
     "priority": "medium",
@@ -857,6 +1551,36 @@ Response: {
   }],
   "status": "complete"
 }
+Note: ONE task object with recurrence field.
+
+Example 6: Recurring task (multiple days) ⚠️ PAY CLOSE ATTENTION ⚠️
+User: "Coffee dates every Monday, Wednesday, and Friday at 7pm"
+Response: {
+  "message": "I'll set up recurring coffee dates every Monday, Wednesday, and Friday at 7:00 PM (19:00-20:00). This will repeat weekly on those days.",
+  "tasks": [{
+    "name": "Coffee date",
+    "date": "2025-12-01",
+    "startTime": "19:00",
+    "endTime": "20:00",
+    "priority": "medium",
+    "colour": "orange",
+    "recurrence": ["RRULE:FREQ=WEEKLY;BYDAY=MO,WE,FR"]
+  }],
+  "status": "complete"
+}
+Note: Still ONE task object (NOT three)! The recurrence field contains MO,WE,FR which makes it appear on all three days.
+
+Example 7: Multiple SEPARATE (non-recurring) tasks
+User: "Meeting on Monday at 2pm and another meeting on Wednesday at 3pm"
+Response: {
+  "message": "I'll create two separate meetings for you.",
+  "tasks": [
+    {"name":"Meeting","date":"2025-12-02","startTime":"14:00","endTime":"15:00","priority":"medium","colour":"blue"},
+    {"name":"Meeting","date":"2025-12-04","startTime":"15:00","endTime":"16:00","priority":"medium","colour":"blue"}
+  ],
+  "status": "complete"
+}
+Note: Two separate tasks because user wants different meetings, not a recurring pattern.
 
 CRITICAL OUTPUT FORMAT - YOU MUST FOLLOW THIS EXACTLY:
 - Return ONLY valid JSON, absolutely NO extra text before or after
@@ -1287,14 +2011,37 @@ RULES:
 - Return tasks as an array, even if just one task
 - Default duration is 1 hour if not specified
 - Colours must be: red, blue, yellow, orange, green, or purple
-- Recurring tasks MUST include "recurrence" field as array: ["RRULE:..."]
 - ALWAYS ask for confirmation before deleting, moving, or splitting tasks
 - When moving tasks, preserve the original duration
 - Track context: "the first one" refers to first suggested time, "it" refers to last mentioned task
 - NO markdown formatting, NO code blocks, just pure JSON
 - **BE EMPATHETIC**: Detect stress and proactively help reduce overwhelm
 - **PROTECT MENTAL HEALTH**: Warn when schedules are too packed, suggest breaks
-- **USE CARING LANGUAGE**: Show warmth and support, especially when user expresses stress`;
+- **USE CARING LANGUAGE**: Show warmth and support, especially when user expresses stress
+
+🚨🚨🚨 FINAL RECURRING EVENT REMINDER - READ BEFORE RESPONDING 🚨🚨🚨
+
+IF the user's request includes ANY of these patterns:
+- "every [day]" (e.g., "every Monday")
+- Multiple days listed: "Monday, Wednesday, Friday" or "Mon/Wed/Fri"
+- "daily", "weekly", "weekdays", "weekends"
+
+THEN you MUST:
+✅ Create exactly ONE task object in the tasks array
+✅ Include "recurrence": ["RRULE:FREQ=WEEKLY;BYDAY=..."] in that task
+✅ Use comma-separated day codes: MO,WE,FR (NOT separate tasks)
+
+DO NOT:
+❌ Create multiple task objects for the same recurring event
+❌ Omit the recurrence field
+❌ Create separate tasks for each day
+
+Example (CORRECT):
+User: "Coffee every Monday, Wednesday, Friday at 7pm"
+tasks: [{"name":"Coffee","date":"2025-12-02","startTime":"19:00","endTime":"20:00","recurrence":["RRULE:FREQ=WEEKLY;BYDAY=MO,WE,FR"]}]
+(Only ONE task object with recurrence field!)
+
+Now process the user's request:`;
 
 
     let completion;
@@ -1502,78 +2249,75 @@ RULES:
       validTasks.push(task);
     }
 
-    // Handle task deletions
+    // Handle task deletions from database
     let tasksDeleted = 0;
     const deletedTaskNames: string[] = [];
     if (parsedResponse.tasksToDelete && Array.isArray(parsedResponse.tasksToDelete)) {
-      const userTasks = taskStorage.get(userId) || [];
-      
       for (const taskNameToDelete of parsedResponse.tasksToDelete) {
-        // Find matching task (case-insensitive)
-        const taskIndex = userTasks.findIndex(t => 
-          t.name?.toLowerCase() === taskNameToDelete.toLowerCase()
-        );
-        
-        if (taskIndex !== -1) {
-          const [deletedTask] = userTasks.splice(taskIndex, 1);
-          if (deletedTask) {
-            deletedTaskNames.push(deletedTask.name || 'Untitled');
+        try {
+          // Find matching task in database (case-insensitive)
+          const taskToDelete = await prisma.task.findFirst({
+            where: { 
+              user_id: userId,
+              name: {
+                equals: taskNameToDelete,
+                mode: 'insensitive'
+              }
+            }
+          });
+          
+          if (taskToDelete) {
+            await prisma.task.delete({
+              where: { id: taskToDelete.id }
+            });
+            deletedTaskNames.push(taskToDelete.name || 'Untitled');
             tasksDeleted++;
-            console.log(`Task deleted: ${deletedTask.name} at ${format(new Date(deletedTask.start_time), 'yyyy-MM-dd HH:mm')}`);
           }
-        } else {
-          console.log(`Task not found for deletion: ${taskNameToDelete}`);
+        } catch (error) {
+          console.error(`Error deleting task "${taskNameToDelete}":`, error);
         }
-      }
-      
-      // Update storage
-      if (tasksDeleted > 0) {
-        taskStorage.set(userId, userTasks);
       }
     }
 
-    // Create tasks in database (always create valid tasks)
+    // Deduplicate tasks before creating (same name, date, and time)
+    const uniqueTasks = validTasks.filter((task, index, self) => 
+      index === self.findIndex(t => 
+        t.name === task.name && 
+        t.date === task.date && 
+        t.startTime === task.startTime &&
+        t.endTime === task.endTime
+      )
+    );
+
+    // Create tasks in database
     let tasksCreated = 0;
     const createdTasks = [];
-    for (const task of validTasks) {
+    
+    for (const task of uniqueTasks) {
       try {
-        const startDateTime = new Date(`${task.date}T${task.startTime}`);
-        const endDateTime = new Date(`${task.date}T${task.endTime}`);
+        const startDateTime = new Date(`${task.date}T${task.startTime}:00-08:00`);
+        const endDateTime = new Date(`${task.date}T${task.endTime}:00-08:00`);
 
-        // Validate dates
         if (isNaN(startDateTime.getTime()) || isNaN(endDateTime.getTime())) {
           console.error('Invalid date format:', { date: task.date, startTime: task.startTime, endTime: task.endTime });
           continue;
         }
 
         // Save task to database using task service (which handles Google Calendar sync)
-        const dbTask = await createTask(startDateTime, endDateTime, userId, {
-          name: task.name,
-          priority: task.priority as 'low' | 'medium' | 'high',
-          description: task.description
-        });
-
-        // Save task to in-memory storage
-        const memoryTask: DbTask = {
-          id: dbTask.id,
-          start_time: startDateTime,
-          end_time: endDateTime,
-          user_id: userId,
-          name: task.name,
-          priority: task.priority as 'low' | 'medium' | 'high',
-          recurrence: task.recurrence,
-          isRecurring: !!(task.recurrence && task.recurrence.length > 0)
-        };
-        
-        if (!taskStorage.has(userId)) {
-          taskStorage.set(userId, []);
-        }
-        taskStorage.get(userId)!.push(memoryTask);
+        await createTask(
+          startDateTime,
+          endDateTime,
+          userId,
+          task.name,
+          task.description || task.label,
+          task.priority || 'medium',
+          task.colour,
+          task.recurrence,
+          task.recurrence && task.recurrence.length > 0
+        );
         
         tasksCreated++;
         createdTasks.push(task);
-        const recurInfo = task.recurrence ? ` (Recurring: ${task.recurrence.join(', ')})` : '';
-        console.log(`Task created: ${task.name} at ${task.date} ${task.startTime}-${task.endTime} (priority: ${task.priority})${recurInfo}`);
       } catch (error) {
         console.error('Error creating task:', error);
       }
@@ -1581,6 +2325,13 @@ RULES:
 
     // Build response
     let message = parsedResponse.message || '';
+    
+    // Prepend Canvas notifications if user isn't actively handling tasks
+    if (canvasNotifications.length > 0 && tasksCreated === 0 && tasksDeleted === 0 && conflicts.length === 0) {
+      const canvasMessage = canvasNotifications.join('\n\n');
+      message = message ? `${canvasMessage}\n\n${message}` : canvasMessage;
+    }
+    
     if (missingInfo.length > 0 && tasksCreated === 0 && tasksDeleted === 0) {
       message = `I need more information: ${missingInfo.join(', ')}.`;
     }

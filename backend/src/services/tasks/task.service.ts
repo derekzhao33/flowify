@@ -50,7 +50,8 @@ async function syncCreateToGoogleCalendar(task: Task) {
                 name: task.name || 'Untitled Task',
                 description: task.description || '',
                 startTime: task.start_time,
-                endTime: task.end_time
+                endTime: task.end_time,
+                recurrence: task.recurrence && task.recurrence.length > 0 ? task.recurrence : undefined
             }
         );
 
@@ -159,14 +160,24 @@ export async function createTask(
     start_time: Date,
     end_time: Date,
     user_id: number,
-    additionalData?: Partial<Pick<Task, 'name' | 'description' | 'priority' | 'color'>>
+    name?: string,
+    description?: string,
+    priority?: string,
+    color?: string,
+    recurrence?: string[],
+    is_recurring?: boolean
 ): Promise<Task> {
     const task = await prisma.task.create({
         data: {
             start_time,
             end_time,
             user_id,
-            ...additionalData
+            name,
+            description,
+            priority,
+            color,
+            recurrence: recurrence || [],
+            is_recurring: is_recurring || false
         }
     });
 

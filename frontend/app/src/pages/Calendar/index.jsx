@@ -6,7 +6,7 @@ import { useGoogleCalendar } from "../../hooks/useGoogleCalendar";
 import { Button } from "../../components/ui/button";
 import { motion } from "framer-motion";
 import { format, addDays, subDays, startOfMonth, endOfMonth, addWeeks, parseISO } from "date-fns";
-import { CalendarIcon, RefreshCw } from "lucide-react";
+import { CalendarIcon, RefreshCw, BookOpen } from "lucide-react";
 import AddTaskModal from "../../components/AddTaskModal";
 import TaskDetailsModal from "../../components/TaskDetailsModal";
 import Sidebar, { useSidebar } from "../../components/Sidebar";
@@ -14,6 +14,7 @@ import DayView from "./components/DayView";
 import WeekView from "./components/WeekView";
 import MonthView from "./components/MonthView";
 import AIChat from "./components/AIChat";
+import { CanvasIntegrationModal } from "../../components/CanvasIntegrationModal";
 import { PRIMARY_BG, VIEW_OPTIONS, CALENDAR_STYLES } from "./constants";
 
 // Inject styles
@@ -24,7 +25,7 @@ if (typeof document !== 'undefined') {
 }
 
 export default function Calendar() {
-  const { events, tasks, addTask, deleteTask, completeTask, syncGoogleCalendarEvents, getAllEvents, googleCalendarEvents } = useSchedule();
+  const { events, tasks, addTask, deleteTask, completeTask, syncGoogleCalendarEvents, getAllEvents, fetchTasks, googleCalendarEvents } = useSchedule();
   const { openAddTaskModal, openTaskDetailsModal } = useModal();
   const { theme } = useThemeSettings();
   const { isCollapsed } = useSidebar();
@@ -46,10 +47,48 @@ export default function Calendar() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [aiMessages, setAiMessages] = useState([]);
   const [isAiTyping, setIsAiTyping] = useState(false);
+  const [canvasModalOpen, setCanvasModalOpen] = useState(false);
+  const [canvasConnected, setCanvasConnected] = useState(false);
+  const [canvasLoading, setCanvasLoading] = useState(false);
+  const [canvasTasks, setCanvasTasks] = useState([]);
+
+  // Fetch Canvas tasks from backend
+  const fetchCanvasTasks = async () => {
+    try {
+      const userId = localStorage.getItem('userId') || 1;
+      const response = await fetch(`http://localhost:3001/api/tasks?userId=${userId}&source=canvas`);
+      if (response.ok) {
+        const data = await response.json();
+        const formattedTasks = data.tasks.map(task => ({
+          id: task.id,
+          name: task.name,
+          description: task.description || '',
+          date: task.start_time.split('T')[0],
+          startTime: task.start_time.split('T')[1]?.substring(0, 5) || '00:00',
+          endTime: task.end_time.split('T')[1]?.substring(0, 5) || '23:59',
+          priority: task.priority || 'medium',
+          color: task.color || 'red',
+          source: 'canvas'
+        }));
+        setCanvasTasks(formattedTasks);
+      }
+    } catch (error) {
+      console.error('Error fetching Canvas tasks:', error);
+    }
+  };
 
   // Check Google Calendar auth status on mount
   useEffect(() => {
     checkAuthStatus();
+    
+    // Check if Canvas is connected
+    const connected = localStorage.getItem('canvas_connected') === 'true';
+    setCanvasConnected(connected);
+    
+    // Fetch Canvas tasks if connected
+    if (connected) {
+      fetchCanvasTasks();
+    }
 
     // Check if we just returned from Google OAuth
     const urlParams = new URLSearchParams(window.location.search);
@@ -233,30 +272,11 @@ export default function Calendar() {
         });
       }
 
-      // Add created tasks to calendar
+      // Tasks are already created in the database by the AI assistant
+      // Just fetch the updated task list
       if (data.tasks && data.tasks.length > 0) {
-        data.tasks.forEach(task => {
-          const frontendTask = {
-            name: task.name,
-            description: task.description || '',
-            date: task.date,
-            startTime: task.startTime,
-            endTime: task.endTime,
-            priority: task.priority || 'medium',
-            color: task.colour || 'blue',
-            label: task.label || '',
-          };
-
-          // Check if task has recurrence pattern
-          if (task.recurrence && task.recurrence.length > 0) {
-            // Expand recurring task into multiple instances
-            const recurringInstances = expandRecurringTask(frontendTask, task.recurrence);
-            recurringInstances.forEach(instance => addTask(instance));
-          } else {
-            // Add single task
-            addTask(frontendTask);
-          }
-        });
+        // Refresh tasks from the backend without full page reload
+        await fetchTasks();
 
         // Show success notification
         setShowSuccess(true);
@@ -285,7 +305,24 @@ export default function Calendar() {
     }
   };
 
-  const allEvents = getAllEvents();
+  // Combine all event sources and expand recurring tasks
+  const allEvents = React.useMemo(() => {
+    const baseEvents = [...getAllEvents(), ...canvasTasks];
+    const expandedEvents = [];
+
+    baseEvents.forEach(task => {
+      // If task has recurrence, expand it
+      if (task.recurrence && Array.isArray(task.recurrence) && task.recurrence.length > 0) {
+        const recurringInstances = expandRecurringTask(task, task.recurrence);
+        expandedEvents.push(...recurringInstances);
+      } else {
+        // Non-recurring task, add as-is
+        expandedEvents.push(task);
+      }
+    });
+
+    return expandedEvents;
+  }, [tasks, canvasTasks, events, googleCalendarEvents]); // Re-compute when any event source changes
 
   return (
     <div className={`flex min-h-screen ${theme === 'dark' ? 'dark' : ''}`} style={{ background: PRIMARY_BG }}>
@@ -388,6 +425,64 @@ export default function Calendar() {
                   Connect Google Calendar
                 </Button>
               )}
+              
+              {/* Canvas Integration Button */}
+              {!canvasConnected ? (
+                <Button
+                  onClick={() => setCanvasModalOpen(true)}
+                  disabled={canvasLoading}
+                  className="font-medium border flex items-center gap-2"
+                  style={{
+                    background: '#dc2626',
+                    color: 'white',
+                    borderColor: '#dc2626',
+                    cursor: 'pointer',
+                    padding: '6px 16px',
+                    fontSize: '14px',
+                    borderRadius: '8px'
+                  }}
+                >
+                  <BookOpen className="h-4 w-4" />
+                  Add Canvas
+                </Button>
+              ) : (
+                <Button
+                  onClick={async () => {
+                    setCanvasLoading(true);
+                    try {
+                      const userId = localStorage.getItem('userId') || 1;
+                      await fetch(`http://localhost:3001/api/canvas/disconnect`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ userId: parseInt(userId) })
+                      });
+                      localStorage.removeItem('canvas_ics_url');
+                      localStorage.removeItem('canvas_connected');
+                      setCanvasConnected(false);
+                      setSyncMessage('Canvas disconnected');
+                      setTimeout(() => setSyncMessage(''), 3000);
+                    } catch (error) {
+                      console.error('Error disconnecting Canvas:', error);
+                    } finally {
+                      setCanvasLoading(false);
+                    }
+                  }}
+                  disabled={canvasLoading}
+                  className="font-medium border flex items-center gap-2"
+                  style={{
+                    background: 'white',
+                    color: '#dc2626',
+                    borderColor: '#fecaca',
+                    cursor: 'pointer',
+                    padding: '6px 16px',
+                    fontSize: '14px',
+                    borderRadius: '8px'
+                  }}
+                >
+                  <BookOpen className="h-4 w-4" />
+                  {canvasLoading ? 'Disconnecting...' : 'Remove Canvas'}
+                </Button>
+              )}
             </div>
           </div>
 
@@ -438,6 +533,16 @@ export default function Calendar() {
           {/* Modals */}
           <AddTaskModal />
           <TaskDetailsModal />
+          <CanvasIntegrationModal
+            isOpen={canvasModalOpen}
+            onClose={() => setCanvasModalOpen(false)}
+            onSuccess={(addedCount) => {
+              setCanvasConnected(true);
+              fetchCanvasTasks(); // Refresh Canvas tasks
+              setSyncMessage(`Canvas connected! Added ${addedCount} assignments.`);
+              setTimeout(() => setSyncMessage(''), 3000);
+            }}
+          />
         </div>
 
         {/* Right Side: AI Chat Panel */}

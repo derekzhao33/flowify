@@ -24,6 +24,8 @@ model User {
     google_token_expiry DateTime?
     google_calendar_sync_token String?
     google_calendar_last_sync DateTime?
+    canvas_ics_url String?
+    canvas_last_sync DateTime?
     tasks Task[]
 }
 
@@ -36,6 +38,10 @@ model Task {
     priority String?
     color String?
     google_event_id String?
+    canvas_event_id String?
+    source String?
+    recurrence String[]
+    is_recurring Boolean @default(false)
     user User @relation(fields: [user_id], references: [id])
     user_id Int
 }
