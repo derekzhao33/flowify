@@ -87,7 +87,7 @@ const Profile = () => {
       <Sidebar />
 
       {/* Main content */}
-      <main className={`flex-1 p-8 space-y-8 w-full transition-all duration-300 ${isCollapsed ? 'ml-20' : 'ml-64'}`}>
+      <main className={`flex-1 p-8 space-y-8 transition-all duration-300 ${isCollapsed ? 'ml-20' : 'ml-64'}`}>
         {/* Header */}
         <div className="mb-8">
           <h1 className="text-3xl font-bold bg-gradient-to-r from-[#355C7D] to-[#725A7A] bg-clip-text text-transparent">Profile Settings</h1>

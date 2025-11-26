@@ -608,7 +608,7 @@ export default function Calender() {
   return (
     <div className={`flex min-h-screen ${theme === 'dark' ? 'dark' : ''}`} style={{ background: PRIMARY_BG }}>
       <Sidebar />
-      <div className={`flex transition-all duration-300 ${isCollapsed ? 'ml-20' : 'ml-64'}`} style={{ height: '100vh', maxHeight: '100vh', overflow: 'hidden', width: '100%' }}>
+      <div className={`flex transition-all duration-300 ${isCollapsed ? 'ml-20' : 'ml-64'}`} style={{ height: '100vh', maxHeight: '100vh', overflow: 'hidden' }}>
         {/* Left Side: Calendar */}
         <div className="flex-1 flex flex-col" style={{ maxWidth: 'calc(100% - 400px)' }}>
         {/* Header and View Switcher */}

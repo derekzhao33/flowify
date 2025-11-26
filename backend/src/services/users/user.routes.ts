@@ -2,7 +2,7 @@ import { Router } from 'express';
 import express from 'express';
 import { type User } from "../../generated/prisma/client.js";
 import { type Task } from "../../generated/prisma/client.js";
-import { getUser, createUser, updateUser, getAllTasksForUser, getTaskForUser, getUserByEmail } from "./user.service.js";
+import { getUser, createUser, updateUser, getAllTasksForUser, getTaskForUser, getUserByEmail, verifyPassword } from "./user.service.js";
 
 const router: Router = Router();
 
@@ -22,8 +22,9 @@ router.post(
                 return;
             }
 
-            // Simple password comparison (in production, use bcrypt)
-            if (user.password !== password) {
+            // Verify password using bcrypt
+            const isPasswordValid = await verifyPassword(password, user.password);
+            if (!isPasswordValid) {
                 res.status(401).json({ error: 'Invalid email or password' });
                 return;
             }
@@ -82,11 +83,26 @@ router.post(
         } = req.body;
 
         try {
+            // Check if user already exists
+            const existingUser = await getUserByEmail(email);
+            if (existingUser) {
+                res.status(409).json({ error: 'Email already exists' });
+                return;
+            }
+
             const user: User | null = await createUser(first_name, last_name, email, password);
-            res.status(201).json(user);
-        } catch (error) {
-            res.status(400).json({ error: '400: Bad Request' });
-            console.log(error);
+            
+            // Return user without password
+            const { password: _, ...userWithoutPassword } = user;
+            res.status(201).json(userWithoutPassword);
+        } catch (error: any) {
+            console.error('Error creating user:', error);
+            // Handle unique constraint violation from database
+            if (error.code === 'P2002') {
+                res.status(409).json({ error: 'Email already exists' });
+            } else {
+                res.status(400).json({ error: error.message || '400: Bad Request' });
+            }
         }
     }
 );
@@ -100,7 +116,9 @@ router.put(
         try {
             const user: User | null = await updateUser(id, data);
             if (user) {
-                res.status(200).json(user);
+                // Return user without password
+                const { password: _, ...userWithoutPassword } = user;
+                res.status(200).json(userWithoutPassword);
             } else {
                 res.status(404).json({ error: '404: Not Found' });
             }

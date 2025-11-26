@@ -1,6 +1,9 @@
 import { type User } from "../../generated/prisma/client.js";
 import { type Task } from "../../generated/prisma/client.js";
-import prisma from "../../shared/prisma.js"
+import prisma from "../../shared/prisma.js";
+import bcrypt from "bcrypt";
+
+const SALT_ROUNDS = 10;
 
 export async function getUser(
     id: number, 
@@ -65,22 +68,37 @@ export async function createUser(
     email: string, 
     password: string,
 ): Promise<User> {
+    // Hash the password before storing
+    const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
+    
     const result: User = await prisma.user.create({
         data: {
             first_name: firstName,
             last_name: lastName,
             email,
-            password,
+            password: hashedPassword,
         },
     });
 
     return result;
 }
 
+export async function verifyPassword(
+    plainPassword: string,
+    hashedPassword: string,
+): Promise<boolean> {
+    return await bcrypt.compare(plainPassword, hashedPassword);
+}
+
 export async function updateUser(
     id: number,
     data: Partial<User>,
 ): Promise<User> {
+    // If password is being updated, hash it first
+    if (data.password) {
+        data.password = await bcrypt.hash(data.password, SALT_ROUNDS);
+    }
+    
     const updatedUser: User = await prisma.user.update({
         where: { id },
         data,
