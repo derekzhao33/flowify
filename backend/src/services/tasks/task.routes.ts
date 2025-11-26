@@ -11,20 +11,28 @@ import {
 const router: Router = Router();
 
 router.get('/', async (req: express.Request, res: express.Response) => {
-    const user_id = Number(req.query.user_id);
-    if (!user_id) {
-        res.status(400).json({ error: 'user_id is required' });
-        return;
+    const userId = parseInt(req.query.userId as string);
+    const source = req.query.source as string;
+
+    if (!userId || isNaN(userId)) {
+        return res.status(400).json({ error: 'Valid userId is required' });
     }
+
     try {
+        const whereClause: any = { user_id: userId };
+        if (source) {
+            whereClause.source = source;
+        }
+
         const tasks = await prisma.task.findMany({
-            where: { user_id },
+            where: whereClause,
             orderBy: { start_time: 'asc' }
         });
-        res.json(tasks);
+
+        res.json({ tasks });
     } catch (error) {
+        console.error('Error fetching tasks:', error);
         res.status(500).json({ error: 'Failed to fetch tasks' });
-        console.log(error);
     }
 });
 
