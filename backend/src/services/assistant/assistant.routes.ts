@@ -22,26 +22,12 @@ router.post('/process', async (req: express.Request, res: express.Response) => {
   }
 
   try {
-    console.log('Processing AI request:', {
-      input: input.substring(0, 100),
-      userId,
-      timezone: userTimezone || 'default',
-      historyLength: conversationHistory?.length || 0
-    });
-
     const result = await processNaturalLanguageInput(
       input.trim(), 
       userId, 
       userTimezone || 'America/Los_Angeles',
       conversationHistory
     );
-
-    console.log('AI response success:', {
-      status: result.status,
-      tasksCreated: result.tasksCreated,
-      hasConflicts: !!(result.conflicts && result.conflicts.length > 0),
-      hasReschedule: !!(result.tasksToReschedule && result.tasksToReschedule.length > 0)
-    });
 
     res.status(200).json(result);
   } catch (error) {

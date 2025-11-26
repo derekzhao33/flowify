@@ -1,6 +1,7 @@
 import express from 'express';
 import { type Task } from '../../generated/prisma/client.js'
 import { Router } from 'express';
+import prisma from '../../shared/prisma.js';
 import {
     createTask,
     updateTask,
@@ -9,14 +10,40 @@ import {
 
 const router: Router = Router();
 
-router.post('/', async (req: express.Request, res: express.Response) => {
-    const { start_time, end_time, user_id }: Task = req.body;
+router.get('/', async (req: express.Request, res: express.Response) => {
+    const user_id = Number(req.query.user_id);
+    if (!user_id) {
+        res.status(400).json({ error: 'user_id is required' });
+        return;
+    }
     try {
-        const task: Task = await createTask(new Date(start_time), new Date(end_time), user_id);
-        res.status(201).json(JSON.stringify(task));
+        const tasks = await prisma.task.findMany({
+            where: { user_id },
+            orderBy: { start_time: 'asc' }
+        });
+        res.json(tasks);
     } catch (error) {
-        res.status(400).json({ error: '400: Bad Request' });
+        res.status(500).json({ error: 'Failed to fetch tasks' });
         console.log(error);
+    }
+});
+
+router.post('/', async (req: express.Request, res: express.Response) => {
+    const { start_time, end_time, user_id, name, description, priority, color }: any = req.body;
+    try {
+        const task: Task = await createTask(
+            new Date(start_time), 
+            new Date(end_time), 
+            user_id,
+            name,
+            description,
+            priority,
+            color
+        );
+        res.status(201).json(task);
+    } catch (error) {
+        console.error('Task creation error:', error);
+        res.status(400).json({ error: 'Failed to create task' });
     }
 });
 
@@ -46,6 +73,31 @@ router.delete('/:id', async (req: express.Request, res: express.Response) => {
         }
     } catch (error) {
         res.status(400).json({ error: 'Task deletion failed' });
+    }
+});
+
+// Cleanup endpoint to remove duplicate tasks
+router.post('/cleanup-duplicates', async (req: express.Request, res: express.Response) => {
+    try {
+        const { taskIds }: { taskIds: number[] } = req.body;
+        
+        if (!taskIds || !Array.isArray(taskIds)) {
+            return res.status(400).json({ error: 'taskIds array is required' });
+        }
+
+        const deleted = await prisma.task.deleteMany({
+            where: {
+                id: { in: taskIds }
+            }
+        });
+
+        res.json({ 
+            message: `Deleted ${deleted.count} tasks`, 
+            count: deleted.count 
+        });
+    } catch (error) {
+        console.error('Cleanup error:', error);
+        res.status(500).json({ error: 'Cleanup failed' });
     }
 });
 

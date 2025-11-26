@@ -5,10 +5,22 @@ import { type User } from "../../generated/prisma/client.js";
 export async function createTask(
     start_time: Date,
     end_time: Date,
-    user_id: number
+    user_id: number,
+    name?: string,
+    description?: string,
+    priority?: string,
+    color?: string
 ): Promise<Task> {
     return await prisma.task.create({
-        data: { start_time, end_time, user_id }
+        data: { 
+            start_time, 
+            end_time, 
+            user_id,
+            name,
+            description,
+            priority,
+            color
+        }
     });
 }
 

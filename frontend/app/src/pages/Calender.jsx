@@ -374,22 +374,12 @@ export default function Calender() {
       };
       setAiMessages((prev) => [...prev, aiMessage]);
 
-      // Add created tasks to calendar
+      // Refresh tasks from database (AI already created them)
       if (data.tasks && data.tasks.length > 0) {
-        data.tasks.forEach(task => {
-          const frontendTask = {
-            name: task.name,
-            description: task.description || '',
-            date: task.date,
-            startTime: task.startTime,
-            endTime: task.endTime,
-            priority: task.priority || 'medium',
-            color: task.colour || 'blue',
-            label: task.label || '',
-          };
-          addTask(frontendTask);
-        });
-
+        // Tasks are already created in the database by the AI
+        // Just refresh the task list to show them
+        window.location.reload(); // Simple refresh to reload tasks
+        
         // Show success notification
         setShowSuccess(true);
         setTimeout(() => setShowSuccess(false), 3000);
