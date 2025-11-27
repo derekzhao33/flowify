@@ -37,7 +37,7 @@ router.get('/', async (req: express.Request, res: express.Response) => {
 });
 
 router.post('/', async (req: express.Request, res: express.Response) => {
-    const { start_time, end_time, user_id, name, description, priority, color }: any = req.body;
+    const { start_time, end_time, user_id, name, description, priority, color, source }: any = req.body;
     try {
         const task: Task = await createTask(
             new Date(start_time), 
@@ -46,7 +46,10 @@ router.post('/', async (req: express.Request, res: express.Response) => {
             name,
             description,
             priority,
-            color
+            color,
+            undefined, // recurrence
+            false, // is_recurring
+            source || 'manual'
         );
         res.status(201).json(task);
     } catch (error) {

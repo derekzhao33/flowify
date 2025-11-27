@@ -1,14 +1,15 @@
 import { useEffect, useRef, useCallback } from 'react';
+import { useAuth } from '../context/AuthContext';
 
 export function useCanvasSync() {
+  const { user } = useAuth();
   const syncIntervalRef = useRef(null);
   const isInitialized = useRef(false);
 
   const syncCanvas = useCallback(async () => {
     const canvasConnected = localStorage.getItem('canvas_connected') === 'true';
-    const userId = localStorage.getItem('userId') || 1;
 
-    if (!canvasConnected) {
+    if (!canvasConnected || !user?.id) {
       return;
     }
 
@@ -19,7 +20,7 @@ export function useCanvasSync() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ userId: parseInt(userId) })
+        body: JSON.stringify({ userId: user.id })
       });
 
       if (response.ok) {
@@ -31,7 +32,7 @@ export function useCanvasSync() {
     } catch (error) {
       console.error('Error syncing Canvas:', error);
     }
-  }, []);
+  }, [user]);
 
   useEffect(() => {
     const canvasConnected = localStorage.getItem('canvas_connected') === 'true';
