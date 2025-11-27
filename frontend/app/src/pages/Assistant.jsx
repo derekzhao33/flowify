@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import { useThemeSettings } from "../context/ThemeContext";
+import { useAuth } from "../context/AuthContext";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { motion, AnimatePresence } from "framer-motion";
@@ -60,6 +61,7 @@ const getPlaceholderResponse = (userMessage) => {
 
 export default function Assistant() {
   const { theme } = useThemeSettings();
+  const { user } = useAuth();
   const { isCollapsed } = useSidebar();
   const [input, setInput] = useState("");
   
@@ -286,8 +288,11 @@ export default function Assistant() {
     setIsTyping(true);
 
     try {
-      // Get user ID from localStorage (default to 1 for now)
-      const userId = parseInt(localStorage.getItem('userId') || '1');
+      // Validate user is authenticated
+      if (!user?.id) {
+        throw new Error('You must be logged in to use the AI assistant');
+      }
+      
       const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
       // Call the backend API
@@ -298,7 +303,7 @@ export default function Assistant() {
         },
         body: JSON.stringify({
           input: userInput,
-          userId,
+          userId: user.id,
           userTimezone,
         }),
       });

@@ -2295,13 +2295,28 @@ Now process the user's request:`;
     
     for (const task of uniqueTasks) {
       try {
-        const startDateTime = new Date(`${task.date}T${task.startTime}:00-08:00`);
-        const endDateTime = new Date(`${task.date}T${task.endTime}:00-08:00`);
+        // Parse the date/time in the user's timezone and convert to UTC
+        // This ensures "7 PM PST" becomes the correct UTC time
+        const startDateTimeStr = `${task.date}T${task.startTime}:00`;
+        const endDateTimeStr = `${task.date}T${task.endTime}:00`;
+        
+        // fromZonedTime converts a date in the specified timezone to UTC
+        const startDateTime = fromZonedTime(startDateTimeStr, userTimezone);
+        const endDateTime = fromZonedTime(endDateTimeStr, userTimezone);
 
         if (isNaN(startDateTime.getTime()) || isNaN(endDateTime.getTime())) {
-          console.error('Invalid date format:', { date: task.date, startTime: task.startTime, endTime: task.endTime });
+          console.error('❌ Invalid date format for task:', { 
+            taskName: task.name,
+            date: task.date, 
+            startTime: task.startTime, 
+            endTime: task.endTime 
+          });
           continue;
         }
+
+        console.log(`📝 Creating task: "${task.name}" for user ${userId}`);
+        console.log(`   Input time: ${task.date} ${task.startTime} (${userTimezone})`);
+        console.log(`   UTC time: ${startDateTime.toISOString()}`);
 
         // Save task to database using task service (which handles Google Calendar sync)
         await createTask(
@@ -2313,13 +2328,23 @@ Now process the user's request:`;
           task.priority || 'medium',
           task.colour,
           task.recurrence,
-          task.recurrence && task.recurrence.length > 0
+          task.recurrence && task.recurrence.length > 0,
+          'ai' // source: mark as AI-generated
         );
         
+        console.log(`✅ Successfully created task: "${task.name}"`);
         tasksCreated++;
         createdTasks.push(task);
       } catch (error) {
-        console.error('Error creating task:', error);
+        console.error('❌ Error creating task:', error);
+        console.error('Task details:', {
+          name: task.name,
+          date: task.date,
+          startTime: task.startTime,
+          endTime: task.endTime,
+          userId: userId,
+          errorMessage: error instanceof Error ? error.message : String(error)
+        });
       }
     }
 

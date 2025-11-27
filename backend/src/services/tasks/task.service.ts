@@ -165,8 +165,19 @@ export async function createTask(
     priority?: string,
     color?: string,
     recurrence?: string[],
-    is_recurring?: boolean
+    is_recurring?: boolean,
+    source?: string
 ): Promise<Task> {
+    // Verify user exists before creating task
+    const userExists = await prisma.user.findUnique({
+        where: { id: user_id },
+        select: { id: true }
+    });
+
+    if (!userExists) {
+        throw new Error(`Cannot create task: User with id ${user_id} does not exist in the database. Please ensure you are logged in.`);
+    }
+
     const task = await prisma.task.create({
         data: {
             start_time,
@@ -177,7 +188,8 @@ export async function createTask(
             priority,
             color,
             recurrence: recurrence || [],
-            is_recurring: is_recurring || false
+            is_recurring: is_recurring || false,
+            source: source || 'manual'
         }
     });
 

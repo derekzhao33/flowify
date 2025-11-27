@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { useSchedule } from "../../context/ScheduleContext";
 import { useModal } from "../../context/ModalContext";
 import { useThemeSettings } from "../../context/ThemeContext";
+import { useAuth } from "../../context/AuthContext";
 import { useGoogleCalendar } from "../../hooks/useGoogleCalendar";
 import { Button } from "../../components/ui/button";
 import { motion } from "framer-motion";
@@ -28,6 +29,7 @@ export default function Calendar() {
   const { events, tasks, addTask, deleteTask, completeTask, syncGoogleCalendarEvents, getAllEvents, fetchTasks, googleCalendarEvents } = useSchedule();
   const { openAddTaskModal, openTaskDetailsModal } = useModal();
   const { theme } = useThemeSettings();
+  const { user } = useAuth();
   const { isCollapsed } = useSidebar();
   const {
     isAuthenticated,
@@ -55,8 +57,8 @@ export default function Calendar() {
   // Fetch Canvas tasks from backend
   const fetchCanvasTasks = async () => {
     try {
-      const userId = localStorage.getItem('userId') || 1;
-      const response = await fetch(`http://localhost:3001/api/tasks?userId=${userId}&source=canvas`);
+      if (!user?.id) return;
+      const response = await fetch(`http://localhost:3001/api/tasks?userId=${user.id}&source=canvas`);
       if (response.ok) {
         const data = await response.json();
         const formattedTasks = data.tasks.map(task => ({
@@ -225,6 +227,12 @@ export default function Calendar() {
         content: msg.content
       }));
 
+      if (!user?.id) {
+        throw new Error('Please log in to use the AI assistant');
+      }
+
+      console.log('🤖 Sending AI request for user:', user.id);
+
       const response = await fetch('http://localhost:3001/api/assistant/process', {
         method: 'POST',
         headers: {
@@ -232,7 +240,7 @@ export default function Calendar() {
         },
         body: JSON.stringify({
           input: userInput,
-          userId: 1,
+          userId: user.id,
           userTimezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
           conversationHistory,
           googleCalendarEvents,
@@ -274,13 +282,22 @@ export default function Calendar() {
 
       // Tasks are already created in the database by the AI assistant
       // Just fetch the updated task list
-      if (data.tasks && data.tasks.length > 0) {
+      console.log('AI Response:', { 
+        tasksCreated: data.tasksCreated, 
+        tasksLength: data.tasks?.length,
+        hasTasks: data.tasks && data.tasks.length > 0 
+      });
+      
+      if (data.tasksCreated > 0) {
+        console.log('✅ AI created tasks, fetching updated task list...');
         // Refresh tasks from the backend without full page reload
         await fetchTasks();
 
         // Show success notification
         setShowSuccess(true);
         setTimeout(() => setShowSuccess(false), 3000);
+      } else if (data.tasks && data.tasks.length > 0 && data.tasksCreated === 0) {
+        console.warn('⚠️ AI parsed tasks but none were created in database!');
       }
     } catch (error) {
       console.error('Error processing AI request:', error);
@@ -448,13 +465,13 @@ export default function Calendar() {
               ) : (
                 <Button
                   onClick={async () => {
+                    if (!user?.id) return;
                     setCanvasLoading(true);
                     try {
-                      const userId = localStorage.getItem('userId') || 1;
                       await fetch(`http://localhost:3001/api/canvas/disconnect`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ userId: parseInt(userId) })
+                        body: JSON.stringify({ userId: user.id })
                       });
                       localStorage.removeItem('canvas_ics_url');
                       localStorage.removeItem('canvas_connected');

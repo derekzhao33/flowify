@@ -3,6 +3,7 @@ import { Button } from '../components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Separator } from '../components/ui/separator';
 import { useThemeSettings } from '../context/ThemeContext';
+import { useAuth } from '../context/AuthContext';
 import Sidebar, { useSidebar } from '../components/Sidebar';
 import { useGoogleCalendar } from '../hooks/useGoogleCalendar';
 import { CanvasIntegrationModal } from '../components/CanvasIntegrationModal';
@@ -10,6 +11,7 @@ import { Mail, Calendar, CheckCircle, AlertCircle, BookOpen } from 'lucide-react
 
 const Integrations = () => {
   const { theme } = useThemeSettings();
+  const { user } = useAuth();
   const { isCollapsed } = useSidebar();
   const { isAuthenticated, isLoading, error, checkAuthStatus, connectGoogleCalendar, disconnectGoogleCalendar } = useGoogleCalendar();
   const [googleAuthStatus, setGoogleAuthStatus] = useState(null);
@@ -46,13 +48,16 @@ const Integrations = () => {
   const handleCanvasDisconnect = async () => {
     setCanvasLoading(true);
     try {
-      const userId = localStorage.getItem('userId') || 1;
+      if (!user?.id) {
+        throw new Error('You must be logged in to disconnect Canvas');
+      }
+      
       const response = await fetch(`http://localhost:3001/api/canvas/disconnect`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ userId: parseInt(userId) })
+        body: JSON.stringify({ userId: user.id })
       });
 
       if (response.ok) {

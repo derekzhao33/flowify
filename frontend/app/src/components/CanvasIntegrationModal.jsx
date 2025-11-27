@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useAuth } from '../context/AuthContext';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from './ui/dialog';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -6,6 +7,7 @@ import { Label } from './ui/label';
 import { AlertCircle, CheckCircle } from 'lucide-react';
 
 export function CanvasIntegrationModal({ isOpen, onClose, onSuccess }) {
+  const { user } = useAuth();
   const [icsUrl, setIcsUrl] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -17,14 +19,17 @@ export function CanvasIntegrationModal({ isOpen, onClose, onSuccess }) {
     setLoading(true);
 
     try {
-      const userId = localStorage.getItem('userId') || 1;
+      if (!user?.id) {
+        throw new Error('Please log in to connect Canvas');
+      }
+
       const response = await fetch(`http://localhost:3001/api/canvas/setup`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          userId: parseInt(userId),
+          userId: user.id,
           icsUrl: icsUrl.trim()
         })
       });

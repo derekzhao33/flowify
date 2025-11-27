@@ -8,8 +8,14 @@ const router = Router();
 // Get authentication URL
 router.get('/auth/url', (req, res) => {
   try {
-    console.log('Request to /auth/url received');
-    const authUrl = googleCalendarService.getAuthUrl();
+    const userId = req.query.userId as string;
+    
+    if (!userId) {
+      return res.status(400).json({ error: 'userId is required' });
+    }
+
+    console.log('Request to /auth/url received for userId:', userId);
+    const authUrl = googleCalendarService.getAuthUrl(userId);
     console.log('Generated auth URL:', authUrl);
     res.json({ authUrl });
   } catch (error: any) {
@@ -29,8 +35,22 @@ router.get('/auth/callback', async (req, res) => {
   try {
     const tokens = await googleCalendarService.getTokens(code);
 
-    // Get user ID from state parameter or use default
-    const userId = state ? parseInt(state as string) : 1; // Default to user ID 1 for now
+    // Get user ID from state parameter
+    if (!state) {
+      throw new Error('User ID not provided in state parameter');
+    }
+    
+    const userId = parseInt(state as string);
+    
+    // Verify user exists
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true }
+    });
+
+    if (!user) {
+      throw new Error(`User with ID ${userId} not found`);
+    }
 
     // Store tokens in database
     await prisma.user.update({
@@ -43,12 +63,12 @@ router.get('/auth/callback', async (req, res) => {
     });
 
     // Redirect back to frontend
-    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
-    res.redirect(`${frontendUrl}?google_auth=success`);
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5174';
+    res.redirect(`${frontendUrl}/calender?google_auth=success`);
   } catch (error) {
     console.error('Error handling callback:', error);
-    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
-    res.redirect(`${frontendUrl}?google_auth=error`);
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5174';
+    res.redirect(`${frontendUrl}/calender?google_auth=error`);
   }
 });
 

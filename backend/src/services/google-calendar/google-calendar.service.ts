@@ -33,13 +33,14 @@ export class GoogleCalendarService {
   }
 
   // Generate authentication URL
-  getAuthUrl(): string {
+  getAuthUrl(userId: string): string {
     console.log('Generating auth URL with client_id:', process.env.GOOGLE_CLIENT_ID);
     const oauth2Client = this.getOAuth2Client();
     return oauth2Client.generateAuthUrl({
       access_type: 'offline',
       scope: SCOPES,
       prompt: 'consent',
+      state: userId, // Pass userId as state to receive it back in callback
     });
   }
 
